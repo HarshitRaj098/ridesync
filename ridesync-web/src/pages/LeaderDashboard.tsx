@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { AppHeader, BottomNavigation, Button, MemberCard, Modal, showToast } from '../components/ui.tsx'
+import { AppHeader, BottomNavigation, Button, EmptyState, MemberCard, Modal, showToast } from '../components/ui.tsx'
 import { SPEED_HISTORY, formatRideTime, separatedReason } from '../data/mockData.ts'
 import { browserNotify } from '../services/notify.ts'
 import { addChat, addNotification, regroup } from '../store/store.ts'
@@ -12,6 +12,9 @@ export default function LeaderDashboard() {
   const dispatch = useDispatch()
   const trip = useSelector((s: RootState) => s.trip.currentTrip)
   const { members, alerts, speedKmh, rideSeconds, distanceCoveredKm } = useSelector((s: RootState) => s.convoy)
+  const pendingRequests = useSelector((s: RootState) =>
+    s.joinRequests.items.filter((r) => r.tripId === trip.id && r.status === 'pending'),
+  )
   const user = useSelector((s: RootState) => s.auth.user)
   const [broadcast, setBroadcast] = useState('')
   const [broadcastError, setBroadcastError] = useState('')
@@ -83,6 +86,32 @@ export default function LeaderDashboard() {
             <MemberCard key={m.id} member={m} members={members} />
           ))}
         </div>
+      </div>
+
+      <div className="section-label"><h3>Join Requests · {pendingRequests.length}</h3></div>
+      <div className="list-wrap">
+        {pendingRequests.length === 0 ? (
+          <EmptyState icon="✉️" title="No pending join requests" detail="When a rider requests to join this trip, their name shows up here so you can see who is waiting." />
+        ) : (
+          <div className="list-card">
+            {pendingRequests.map((r) => (
+              <div className="request-row" key={r.id}>
+                <div className="m-avatar">{r.requesterInitials}</div>
+                <div className="nt-info">
+                  <b>{r.requesterName}</b>
+                  <span>
+                    Asked to join {r.tripName} · {new Date(r.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <span className="nt-pending">Pending</span>
+              </div>
+            ))}
+            <p style={{ color: 'var(--text-faint)', fontSize: 12, margin: '10px 0 0' }}>
+              Approving a request needs the real backend (after Deploy) — for now requests are
+              stored locally and shown here, and the requester can cancel theirs from Join Trip.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="section-label"><h3>Leader Actions</h3></div>

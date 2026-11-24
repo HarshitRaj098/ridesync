@@ -302,7 +302,8 @@ input, select, textarea { font-family: inherit; }
 .bar-track { flex: 1; height: 8px; border-radius: 100px; background: var(--bg-alt); overflow: hidden; }
 .bar-fill { height: 100%; border-radius: 100px; background: linear-gradient(90deg, var(--primary), var(--cyan)); }
 .qr-box { margin: 6px 0 18px; border-radius: var(--radius); border: 1px dashed var(--border-strong); background: var(--card); padding: 20px; display: flex; align-items: center; gap: 16px; }
-.qr-graphic { width: 64px; height: 64px; border-radius: 10px; background: repeating-conic-gradient(#fff 0% 25%, #0d1220 0% 50%) 0 / 10px 10px; opacity: 0.9; flex-shrink: 0; }
+.qr-img { border-radius: 10px; flex-shrink: 0; background: #fff; }
+.qr-error { color: var(--danger); font-size: 12px; line-height: 1.6; padding: 12px; border: 1px solid rgba(239, 68, 68, 0.35); border-radius: var(--radius-sm); background: rgba(239, 68, 68, 0.07); }
 .qr-text b { display: block; font-size: 13px; margin-bottom: 3px; }
 .qr-text span { font-size: 11.5px; color: var(--text-dim); }
 .divider-or { display: flex; align-items: center; gap: 12px; margin: 18px 0; color: var(--text-faint); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
@@ -312,6 +313,11 @@ input, select, textarea { font-family: inherit; }
 .nt-info b { display: block; font-size: 13.5px; }
 .nt-info span { font-size: 11px; color: var(--text-dim); }
 .nt-join { padding: 8px 14px; border-radius: 9px; font-size: 11.5px; font-weight: 700; background: rgba(0, 123, 255, 0.15); color: var(--cyan); border: 1px solid rgba(0, 123, 255, 0.35); }
+.nt-cancel { padding: 8px 14px; border-radius: 9px; font-size: 11.5px; font-weight: 700; background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.35); white-space: nowrap; }
+.nt-joined { font-size: 12px; font-weight: 700; color: var(--success); white-space: nowrap; }
+.nt-pending { font-size: 11px; font-weight: 700; color: var(--warning); background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); padding: 5px 10px; border-radius: 100px; white-space: nowrap; }
+.request-row { display: flex; align-items: center; gap: 12px; padding: 13px; border-radius: var(--radius-sm); background: var(--card); border: 1px solid var(--border); margin-bottom: 10px; }
+.field-note { color: var(--cyan); font-size: 12px; margin: 6px 0 0; line-height: 1.5; }
 .empty { text-align: center; color: var(--text-dim); font-size: 13px; padding: 32px 20px; line-height: 1.7; }
 
 /* ---------- Week 1–6 additions ---------- */

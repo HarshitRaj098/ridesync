@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { useQuery } from '@tanstack/react-query'
-import { AppHeader, BottomNavigation, EmptyState, ErrorState, Loader, TripCard, showToast } from '../components/ui.tsx'
+import { AppHeader, BottomNavigation, EmptyState, ErrorState, Loader, TripCard } from '../components/ui.tsx'
 import { fetchRiderStats } from '../services/api.ts'
 import type { RootState } from '../store/store.ts'
 
@@ -36,7 +36,7 @@ export default function Home() {
         <button className="qa-item" onClick={() => navigate(`/trips/${trip.id}/convoy`)} aria-label="Open my trips">
           <div className="qa-icon">🗺️</div><span>My Trips</span>
         </button>
-        <button className="qa-item" onClick={() => showToast('Finding nearby groups')} aria-label="Find nearby groups">
+        <button className="qa-item" onClick={() => navigate('/trips/join')} aria-label="Find nearby groups">
           <div className="qa-icon">📍</div><span>Nearby</span>
         </button>
       </div>

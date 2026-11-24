@@ -49,6 +49,8 @@ export interface Trip {
   startTime: string
   startsIn: string
   code: string
+  /** Name of the trip leader, when one was chosen at creation time. */
+  leaderName?: string
 }
 
 export const CURRENT_TRIP: Trip = {
@@ -159,9 +161,13 @@ export function separatedReason(member: Member, members: Member[]): string | nul
   return null
 }
 
+/**
+ * Nearby trips are real trips from the store (same ids/codes as PAST_TRIPS),
+ * so a Request from here targets a trip the join logic actually knows.
+ */
 export const NEARBY_TRIPS = [
-  { id: 'nearby-1', name: 'Bhopal Bikers Sunday Loop', detail: '1.2 km away · 8 riders' },
-  { id: 'nearby-2', name: 'Highway Cruisers – Indore Run', detail: '4.6 km away · 15 riders' },
+  { id: 'nearby-1', tripId: 'bhopal-loop', name: 'Bhopal Bikers Sunday Loop', detail: '1.2 km away · 8 riders', code: 'LOOP86' },
+  { id: 'nearby-2', tripId: 'indore-run', name: 'Highway Cruisers – Indore Run', detail: '4.6 km away · 15 riders', code: 'IND198' },
 ]
 
 export const NOTIFICATIONS = [

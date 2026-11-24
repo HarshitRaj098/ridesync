@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
-import { AppHeader, BottomNavigation, Button, Input, showToast } from '../components/ui.tsx'
+import { AppHeader, BottomNavigation, Button, Input, QrCode, showToast } from '../components/ui.tsx'
+import { buildInviteLink, copyText, generateTripCode } from '../services/join.ts'
 import { createTrip } from '../store/store.ts'
 import type { RootState } from '../store/store.ts'
 import type { Trip } from '../data/mockData.ts'
@@ -20,6 +21,13 @@ export default function CreateTrip() {
   const [nameError, setNameError] = useState('')
   const [destError, setDestError] = useState('')
   const [dateError, setDateError] = useState('')
+  // The invite code and id are fixed when the form opens, so the QR code
+  // and invite link shown below are the real ones for the trip that will
+  // be created — not a fake graphic, and not a different code afterwards.
+  const [code] = useState(() => generateTripCode())
+  const [tripId] = useState(() => `trip-${Date.now()}`)
+  const [copied, setCopied] = useState(false)
+  const inviteLink = buildInviteLink({ code })
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
@@ -31,7 +39,7 @@ export default function CreateTrip() {
     setDateError(dtErr)
     if (nErr || dErr || dtErr) return
     const trip: Trip = {
-      id: `trip-${Date.now()}`,
+      id: tripId,
       name: name.trim(),
       from: 'Bhopal',
       to: destination.replace(/,.*$/, '').trim() || 'Manali',
@@ -42,7 +50,8 @@ export default function CreateTrip() {
       date,
       startTime: time,
       startsIn: 'Starts soon',
-      code: Math.random().toString(36).slice(2, 8).toUpperCase(),
+      code,
+      leaderName: leader === 'You (Trip Creator)' ? (user?.name ?? 'You') : leader,
     }
     dispatch(createTrip(trip))
     showToast('Trip created — invite your riders!')
@@ -93,11 +102,24 @@ export default function CreateTrip() {
           Leader: {leader}
           {user ? ` · created by ${user.name}` : ''}
         </p>
+        <div className="section-label" style={{ padding: 0, margin: '4px 0 12px' }}><h3>Invite</h3></div>
         <div className="qr-box">
-          <div className="qr-graphic" />
+          <QrCode value={inviteLink} size={112} label={`QR code to join ${name.trim() || 'this trip'}`} />
           <div className="qr-text">
-            <b>Invite QR generated</b>
-            <span>Riders can scan to join instantly, or share the link below.</span>
+            <b>Invite QR — code {code}</b>
+            <span>{inviteLink}</span>
+            <button
+              type="button"
+              className="nt-join"
+              style={{ alignSelf: 'flex-start', marginTop: 8 }}
+              onClick={async () => {
+                const ok = await copyText(inviteLink)
+                setCopied(ok)
+                if (!ok) showToast('Copy did not work — long-press the link to copy it by hand')
+              }}
+            >
+              {copied ? 'Link copied ✓' : 'Copy invite link'}
+            </button>
           </div>
         </div>
         <Button type="submit">Create Trip</Button>

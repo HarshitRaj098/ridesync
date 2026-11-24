@@ -57,6 +57,39 @@ export function Badge({ tone = 'info', children }: { tone?: 'success' | 'warn' |
   return <span className={`badge badge-${tone}`}>{children}</span>
 }
 
+/* ---------- QrCode — a REAL QR code, generated client-side ----------
+ * Encodes the given text (an invite link) with the `qrcode` library and
+ * renders it as an image. If generation fails, an honest error is shown —
+ * never a static fake QR graphic presented as live. */
+export function QrCode({ value, size = 128, label }: { value: string; size?: number; label?: string }) {
+  const [src, setSrc] = useState('')
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let cancelled = false
+    setSrc('')
+    setError('')
+    if (!value) {
+      setError('Nothing to encode yet.')
+      return
+    }
+    // Dynamic import keeps the QR library out of the first bundle.
+    void import('qrcode')
+      .then((QRCode) => QRCode.toDataURL(value, { width: size, margin: 1, color: { dark: '#0d1220', light: '#ffffff' } }))
+      .then((url) => { if (!cancelled) setSrc(url) })
+      .catch(() => { if (!cancelled) setError('QR code could not be generated. Copy the link below instead.') })
+    return () => { cancelled = true }
+  }, [value, size])
+  if (error) {
+    return (
+      <div className="qr-error" role="alert">
+        <span aria-hidden="true">⚠️</span> {error}
+      </div>
+    )
+  }
+  if (!src) return <Loader label="Generating QR code…" />
+  return <img className="qr-img" src={src} width={size} height={size} alt={label ?? `QR code for ${value}`} />
+}
+
 /* ---------- Modal (reusable bottom sheet) ---------- */
 export function Modal({ title, icon, children, onClose, actions }: { title: string; icon?: string; children: ReactNode; onClose?: () => void; actions?: ReactNode }) {
   useEffect(() => {

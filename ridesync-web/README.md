@@ -143,6 +143,19 @@ Manali convoy code `A1B2C9`.
 | 6 | Settings toggles persist | ✅ Done — saved in `ridesync-settings` localStorage |
 | 6 | Loading / empty / error states, aria labels on icon buttons | ✅ Done — Loader / EmptyState / ErrorState on Home, Profile, Convoy, Notifications; aria-labels on map controls, voice, SOS, filters |
 
+## Join Trip — concluded (mock layer, 2026-11-25)
+
+One shared join logic in `src/services/join.ts` (`attemptJoin` / `parseInviteLink` / `resolveJoinCode` / `buildInviteLink`) that code, invite link, QR and Request all go through:
+
+- **Code:** blank and wrong codes are rejected with an inline error — blank no longer joins Manali. Valid codes (case-insensitive) join and open the lobby.
+- **Invite link:** pasted links are parsed (`/trips/join?code=A1B2C9`, `/join/A1B2C9`, bare code). Opening a link goes to Join Trip with the code pre-filled. Create Trip generates a real copyable invite link + code for the trip it creates.
+- **QR:** a real QR code is generated client-side from the invite link (`qrcode` library, rendered as a PNG data URL) in Create Trip, the Trip Lobby and Join Trip. No fake QR graphic remains.
+- **Request:** stored in Redux + localStorage (`ridesync-join-requests`), cancellable by the requester from Join Trip, and visible to the leader on the Leader Dashboard and in the Trip Lobby, with the requester's name. A notification is also added when a request is sent.
+- **Home Nearby:** goes to Join Trip (nearby list) instead of toasting.
+- **Trip Lobby Invite:** copies the real link + code to the clipboard (with a hand-copy fallback if clipboard is unavailable).
+
+Still mock: requests stay "pending" — leader approval and capacity checks need the real backend (Deploy + the request/approve endpoint).
+
 ### Still needs a real backend (not done — do not mistake the above for live)
 
 - **Real auth server** — login/register are mock; any valid-looking email signs in locally.

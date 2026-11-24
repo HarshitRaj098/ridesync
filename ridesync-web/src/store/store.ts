@@ -96,6 +96,55 @@ const tripSlice = createSlice({
   },
 })
 
+/* ---------------- Join requests (Join Trip conclusion, mock layer) ----------------
+ * A request to join a trip is stored here and in localStorage, so it
+ * survives a reload, can be cancelled by the requester, and is visible
+ * to the leader (Leader Dashboard + Trip Lobby). The REAL layer — leader
+ * approves a stored request, capacity check — waits for Deploy and the
+ * request/approve endpoint; until then a request is "pending" and the
+ * leader sees it but cannot approve it in-app. */
+export interface JoinRequest {
+  id: string
+  tripId: string
+  tripName: string
+  requesterName: string
+  requesterInitials: string
+  status: 'pending' | 'cancelled'
+  createdAt: string
+}
+interface JoinRequestsState {
+  items: JoinRequest[]
+}
+const storedRequests = loadJson<JoinRequest[]>('ridesync-join-requests', [])
+const joinRequestsSlice = createSlice({
+  name: 'joinRequests',
+  initialState: { items: storedRequests } as JoinRequestsState,
+  reducers: {
+    /** Store a new join request. Callers must check for an existing pending
+     * request for the same trip first — this reducer will not duplicate one. */
+    requestJoin(state, action: PayloadAction<{ tripId: string; tripName: string; requesterName: string; requesterInitials: string }>) {
+      const { tripId, requesterName } = action.payload
+      const existing = state.items.find(
+        (r) => r.tripId === tripId && r.requesterName === requesterName && r.status === 'pending',
+      )
+      if (existing) return
+      state.items.unshift({
+        id: `jr-${Date.now()}`,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        ...action.payload,
+      })
+      saveJson('ridesync-join-requests', state.items)
+    },
+    /** Cancel a request (requester only). Kept as 'cancelled' so the
+     * requester can see what happened and request again. */
+    cancelJoinRequest(state, action: PayloadAction<string>) {
+      state.items = state.items.map((r) => (r.id === action.payload ? { ...r, status: 'cancelled' as const } : r))
+      saveJson('ridesync-join-requests', state.items)
+    },
+  },
+})
+
 /* ---------------- Convoy (live) ---------------- */
 interface ConvoyState {
   members: Member[]
@@ -236,6 +285,7 @@ const settingsSlice = createSlice({
 
 export const { login, logout } = authSlice.actions
 export const { createTrip, joinTrip, selectTrip } = tripSlice.actions
+export const { requestJoin, cancelJoinRequest } = joinRequestsSlice.actions
 export const { tick, applyLocationUpdate, addChat, toggleVoice, setVoiceActive, openSos, closeSos, confirmSos, regroup } = convoySlice.actions
 export const { addNotification, markAllRead, markRead } = notificationsSlice.actions
 export const { toggleSetting } = settingsSlice.actions
@@ -244,6 +294,7 @@ export const store = configureStore({
   reducer: {
     auth: authSlice.reducer,
     trip: tripSlice.reducer,
+    joinRequests: joinRequestsSlice.reducer,
     convoy: convoySlice.reducer,
     notifications: notificationsSlice.reducer,
     settings: settingsSlice.reducer,
