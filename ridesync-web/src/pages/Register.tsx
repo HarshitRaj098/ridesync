@@ -57,7 +57,7 @@ export default function Register() {
         <h1>Create your account</h1>
         <p>Join convoys, lead rides and keep your whole crew connected.</p>
         <form onSubmit={submit} noValidate>
-          <Input id="name" label="Full name" placeholder="Harshit Raj" value={name} onChange={(e) => { setName(e.target.value); if (nameError) setNameError('') }} error={nameError} aria-invalid={Boolean(nameError)} />
+          <Input id="name" label="Full name" placeholder="Your full name" value={name} onChange={(e) => { setName(e.target.value); if (nameError) setNameError('') }} error={nameError} aria-invalid={Boolean(nameError)} />
           <Input id="email" label="Email" type="email" placeholder="you@example.com" value={email} onChange={(e) => { setEmail(e.target.value); if (emailError) setEmailError('') }} error={emailError} aria-invalid={Boolean(emailError)} />
           <PasswordField id="password" label="Password" placeholder="6+ characters" value={password} onChange={(e) => { setPassword(e.target.value); if (passwordError) setPasswordError('') }} error={passwordError} />
           <Button type="submit" disabled={busy}>{busy ? 'Creating account…' : 'Create Account'}</Button>

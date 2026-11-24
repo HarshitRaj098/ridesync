@@ -37,7 +37,7 @@ export default function App() {
             <Route path="/home" element={<Protected><Home /></Protected>} />
             <Route path="/trips/create" element={<Protected><CreateTrip /></Protected>} />
             <Route path="/trips/join" element={<Protected><JoinTrip /></Protected>} />
-            {/* Invite links can also arrive as /trips/join/A1B2C9 — same screen, code pre-filled. */}
+            {/* Invite links can also arrive as /trips/join/XXXXXX — same screen, code pre-filled. */}
             <Route path="/trips/join/:code" element={<Protected><JoinTrip /></Protected>} />
             <Route path="/trips/:id/lobby" element={<Protected><TripLobby /></Protected>} />
             <Route path="/trips/:id/convoy" element={<Protected><ConvoyDashboard /></Protected>} />

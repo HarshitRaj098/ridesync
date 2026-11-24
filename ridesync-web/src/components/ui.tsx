@@ -237,13 +237,6 @@ export function TripCard({ trip, onOpen }: { trip: Trip; onOpen?: () => void }) 
         <span>📍</span>
         {trip.from} → {trip.to}{trip.distanceKm > 0 ? ` · ${trip.distanceKm} km` : ' · distance not estimated yet'}
       </div>
-      <div className="trip-avatars">
-        <div className="mini-avatar">RV</div>
-        <div className="mini-avatar">AK</div>
-        <div className="mini-avatar">PS</div>
-        <div className="mini-avatar">TM</div>
-        <div className="mini-avatar more">+8</div>
-      </div>
       <div className="trip-stats-row">
         <div className="trip-stat"><b>{trip.riders}</b><span>Riders</span></div>
         <div className="trip-stat"><b>{trip.vehicles}</b><span>Vehicles</span></div>
@@ -297,8 +290,12 @@ export function AppHeader({ title, showBack = false, onBack }: { title?: string;
   }
   const menuItems = [
     { to: '/home', label: '🏠 Home' },
-    { to: `/trips/${trip.id}/convoy`, label: '🗺️ My Trip — map' },
-    { to: `/trips/${trip.id}/lobby`, label: '👥 Trip Lobby' },
+    ...(trip
+      ? [
+          { to: `/trips/${trip.id}/convoy`, label: '🗺️ My Trip — map' },
+          { to: `/trips/${trip.id}/lobby`, label: '👥 Trip Lobby' },
+        ]
+      : []),
     { to: '/notifications', label: `🔔 Notifications${unread > 0 ? ` (${unread})` : ''}` },
     { to: '/profile', label: '👤 Profile' },
     { to: '/settings', label: '⚙️ Settings' },
@@ -344,12 +341,14 @@ export function AppHeader({ title, showBack = false, onBack }: { title?: string;
 /* ---------- BottomNavigation ---------- */
 export function BottomNavigation() {
   const unread = useSelector((s: RootState) => s.notifications.unreadCount)
-  // Trips opens the CURRENT trip's convoy — not a hardcoded Manali URL —
-  // so it follows a trip you just created or joined.
+  // Trips opens the current trip's map when there is one; with no trip
+  // yet it opens Create Trip instead of a dead link.
   const trip = useSelector((s: RootState) => s.trip.currentTrip)
   const NAV_ITEMS = [
     { to: '/home', label: 'Home', icon: '🏠' },
-    { to: `/trips/${trip.id}/convoy`, label: 'Trips', icon: '🗺️' },
+    // Trips opens the current trip's map when there is one; with no trip
+    // yet it opens Create Trip instead of a dead link.
+    { to: trip ? `/trips/${trip.id}/convoy` : '/trips/create', label: 'Trips', icon: '🗺️' },
     { to: '/notifications', label: 'Alerts', icon: '🔔' },
     { to: '/profile', label: 'Profile', icon: '👤' },
   ]
@@ -375,13 +374,11 @@ export function BottomNavigation() {
  * Camera opens the device camera / photo picker and shows the photo you
  * took, on this device only — nothing is uploaded or shared with the
  * convoy, because there is no photo server yet. */
-export function MapControls({ onRecenter, onResetView, onToggleSat, satOn, onToggleTraffic, trafficOn, trip }: {
+export function MapControls({ onRecenter, onResetView, onToggleSat, satOn, trip }: {
   onRecenter: () => void
   onResetView: () => void
   onToggleSat: () => void
   satOn: boolean
-  onToggleTraffic?: () => void
-  trafficOn?: boolean
   trip: { name: string; code: string }
 }) {
   const [copied, setCopied] = useState(false)
@@ -440,9 +437,6 @@ export function MapControls({ onRecenter, onResetView, onToggleSat, satOn, onTog
         <button className="circle-btn" title="Compass — reset view north-up" aria-label="Compass — reset map view north-up" onClick={onResetView}>🧭</button>
         <button className="circle-btn" title="Recenter" aria-label="Recenter map on convoy" onClick={onRecenter}>◎</button>
         <button className="circle-btn" title={satOn ? 'Standard view' : 'Satellite view'} aria-label={satOn ? 'Switch to standard map view' : 'Switch to satellite view'} aria-pressed={satOn} onClick={onToggleSat}>🛰️</button>
-        {onToggleTraffic ? (
-          <button className={`circle-btn${trafficOn ? ' active' : ''}`} title="Traffic (simulated)" aria-label="Toggle simulated traffic layer" aria-pressed={Boolean(trafficOn)} onClick={onToggleTraffic}>🚦</button>
-        ) : null}
         <button className={`circle-btn${copied ? ' active' : ''}`} title="Share invite link + code" aria-label="Share trip invite link and code" aria-pressed={copied} onClick={shareInvite}>{copied ? '✓' : '🔗'}</button>
         <button className="circle-btn" title="Take a photo" aria-label="Take a photo" onClick={() => fileRef.current?.click()}>📷</button>
         <input
@@ -503,7 +497,7 @@ export function SOSButton() {
  * Press and HOLD to talk: opens the local microphone with getUserMedia,
  * records with MediaRecorder and shows a live mic-level meter. Audio is
  * captured locally only and discarded when you release — there is NO voice
- * server yet, so nobody else in the convoy can hear it (mock voice).
+ * server yet, so nobody else in the convoy can hear it.
  * If the mic is denied or unavailable, a clear fallback message is shown. */
 type VoiceStatus = 'idle' | 'requesting' | 'live' | 'denied' | 'unsupported'
 export function VoiceButton() {
@@ -611,7 +605,7 @@ export function VoiceButton() {
       >
         🎙️
       </button>
-      <span className="voice-hint">Hold to talk · local mic only</span>
+      <span className="voice-hint">Hold to talk · audio stays on this device</span>
     </div>
   )
 }

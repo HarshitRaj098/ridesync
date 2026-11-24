@@ -1,20 +1,24 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
-import { AppHeader, BottomNavigation, Button, EmptyState, Input, QrCode } from '../components/ui.tsx'
-import { NEARBY_TRIPS, CURRENT_TRIP } from '../data/mockData.ts'
-import { attemptJoin, buildInviteLink, parseInviteLink } from '../services/join.ts'
+import { AppHeader, BottomNavigation, Button, EmptyState, Input } from '../components/ui.tsx'
+import { attemptJoin, parseInviteLink } from '../services/join.ts'
 import { addNotification, cancelJoinRequest, joinTrip, requestJoin, selectTrip } from '../store/store.ts'
 import type { RootState } from '../store/store.ts'
 
 /**
- * Join Trip, concluded (mock layer). Code, invite link, QR and Request all
- * go through one join logic in services/join.ts:
+ * Join Trip. Code, invite link and Request all go through one join
+ * logic in services/join.ts:
  * - blank / wrong code → inline error, nothing joins
  * - a pasted invite link is parsed and its code is used
- * - a Request is stored (Redux + localStorage), can be cancelled, and the
- *   leader sees it on the Leader Dashboard and in the Trip Lobby
+ * - a Request is stored (Redux + localStorage), can be cancelled, and
+ *   the leader sees it on the Leader Dashboard and in the Trip Lobby
  * The real layer (leader approves, capacity check) waits for Deploy.
+ *
+ * There is no directory of other people's trips without a backend, so
+ * the Nearby section is empty until a real backend lists trips. The
+ * trips below are the ones this device already knows — trips the user
+ * created or joined.
  */
 export default function JoinTrip() {
   const navigate = useNavigate()
@@ -30,10 +34,9 @@ export default function JoinTrip() {
   const [codeError, setCodeError] = useState('')
   const [linkError, setLinkError] = useState('')
   const [linkNote, setLinkNote] = useState('')
-  const [showQr, setShowQr] = useState(false)
 
   // An invite link opens this screen with the code pre-filled:
-  // /trips/join?code=A1B2C9 or /trips/join/A1B2C9
+  // /trips/join?code=XXXXXX or /trips/join/XXXXXX
   useEffect(() => {
     const fromLink = searchParams.get('code') ?? codeParam ?? ''
     if (!fromLink.trim()) return
@@ -90,7 +93,7 @@ export default function JoinTrip() {
             id="code"
             type="text"
             maxLength={6}
-            placeholder="A1B2C9"
+            placeholder="XXXXXX"
             value={code}
             onChange={(e) => { setCode(e.target.value.toUpperCase()); if (codeError) setCodeError('') }}
             aria-invalid={Boolean(codeError)}
@@ -103,7 +106,7 @@ export default function JoinTrip() {
         <Input
           id="link"
           label="Invite link"
-          placeholder="https://ridesync-ten.vercel.app/trips/join?code=A1B2C9"
+          placeholder="https://ridesync-ten.vercel.app/trips/join?code=XXXXXX"
           value={link}
           onChange={(e) => { setLink(e.target.value); if (linkError) setLinkError(''); if (linkNote) setLinkNote('') }}
           error={linkError}
@@ -112,48 +115,39 @@ export default function JoinTrip() {
         {linkNote ? <p className="field-note" role="status">{linkNote}</p> : null}
         <Button type="submit">Join Trip</Button>
         <p style={{ color: 'var(--text-dim)', fontSize: 12, marginTop: 12 }}>
-          Joining is instant for public trips. The Manali Mountain Convoy code is{' '}
-          <b style={{ color: 'var(--cyan)' }}>{CURRENT_TRIP.code}</b>.
+          Joining is instant for public trips. Only trips this device knows — ones you created or
+          joined — can be joined by code.
         </p>
 
-        <div className="section-label" style={{ padding: 0, margin: '26px 0 12px' }}>
-          <h3>Invite QR — {CURRENT_TRIP.name}</h3>
-        </div>
-        <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '0 0 10px' }}>
-          A rider can scan this code with a phone camera to open the invite link for this convoy.
-        </p>
-        {showQr ? (
-          <div className="qr-box">
-            <QrCode value={buildInviteLink(CURRENT_TRIP)} size={128} label={`QR code to join ${CURRENT_TRIP.name}`} />
-            <div className="qr-text">
-              <b>Scan to join</b>
-              <span>{buildInviteLink(CURRENT_TRIP)}</span>
-            </div>
-          </div>
+        <div className="section-label" style={{ padding: 0, margin: '26px 0 12px' }}><h3>Your Trips</h3></div>
+        {trips.length === 0 ? (
+          <EmptyState
+            icon="🏍️"
+            title="No trips to join yet"
+            detail="Create a trip and share its code, or ask a rider to send you their invite link."
+            action={<button type="button" className="nt-join" onClick={() => navigate('/trips/create')}>Create a trip</button>}
+          />
         ) : (
-          <Button type="button" variant="ghost" onClick={() => setShowQr(true)}>📷 Show invite QR</Button>
+          trips.map((t) => {
+            const joined = joinedTripIds.includes(t.id)
+            const pending = pendingFor(t.id)
+            return (
+              <div className="nearby-trip" key={t.id}>
+                <div className="notif-ic">🏍️</div>
+                <div className="nt-info"><b>{t.name}</b><span>{t.from} → {t.to} · code {t.code}</span></div>
+                {joined ? (
+                  <span className="nt-joined">Joined ✓</span>
+                ) : pending ? (
+                  <button type="button" className="nt-cancel" onClick={() => dispatch(cancelJoinRequest(pending.id))}>
+                    Requested — Cancel
+                  </button>
+                ) : (
+                  <button type="button" className="nt-join" onClick={() => requestNearby(t.id, t.name)}>Request</button>
+                )}
+              </div>
+            )
+          })
         )}
-
-        <div className="section-label" style={{ padding: 0, margin: '26px 0 12px' }}><h3>Nearby Trips</h3></div>
-        {NEARBY_TRIPS.map((t) => {
-          const joined = joinedTripIds.includes(t.tripId)
-          const pending = pendingFor(t.tripId)
-          return (
-            <div className="nearby-trip" key={t.id}>
-              <div className="notif-ic">🏍️</div>
-              <div className="nt-info"><b>{t.name}</b><span>{t.detail} · code {t.code}</span></div>
-              {joined ? (
-                <span className="nt-joined">Joined ✓</span>
-              ) : pending ? (
-                <button type="button" className="nt-cancel" onClick={() => dispatch(cancelJoinRequest(pending.id))}>
-                  Requested — Cancel
-                </button>
-              ) : (
-                <button type="button" className="nt-join" onClick={() => requestNearby(t.tripId, t.name)}>Request</button>
-              )}
-            </div>
-          )
-        })}
         <p style={{ color: 'var(--text-faint)', fontSize: 12 }}>
           A request is stored and shown to the trip leader. Approval by the leader needs the
           real backend (after Deploy) — for now a request stays “pending”.
@@ -161,7 +155,7 @@ export default function JoinTrip() {
 
         <div className="section-label" style={{ padding: 0, margin: '26px 0 12px' }}><h3>Your Join Requests</h3></div>
         {myRequests.length === 0 ? (
-          <EmptyState icon="✉️" title="No join requests yet" detail="Request to join a nearby trip above and it will show up here." />
+          <EmptyState icon="✉️" title="No join requests yet" detail="Request to join a trip above and it will show up here." />
         ) : (
           myRequests.map((r) => (
             <div className="request-row" key={r.id}>

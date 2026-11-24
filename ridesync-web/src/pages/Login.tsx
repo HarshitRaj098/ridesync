@@ -67,9 +67,9 @@ export default function Login() {
       </div>
       <div className="mock-note">
         {isRealApi ? (
-          <><b>Real backend connected.</b> Sign in with your RideSync account — demo: demo@ridesync.app / ridesync123.</>
+          <><b>Real backend connected.</b> Sign in with your RideSync account.</>
         ) : (
-          <><b>Mock login (no backend configured):</b> enter any email and a password of 6+ characters — e.g. harshit@example.com / ridesync123 — and you will be signed in locally.</>
+          <><b>No backend configured:</b> sign in with any email and a password of 6+ characters — your account is stored only in this browser.</>
         )}
       </div>
     </div>

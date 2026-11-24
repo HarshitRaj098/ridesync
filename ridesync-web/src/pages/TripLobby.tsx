@@ -1,35 +1,83 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { AppHeader, BottomNavigation, Button, EmptyState, MemberCard, QrCode, StatusBadge, TripCard, showToast } from '../components/ui.tsx'
 import { buildInviteLink, buildInviteText, copyText } from '../services/join.ts'
+import { isTripLeader } from '../services/convoySummary.ts'
+import type { Member } from '../data/mockData.ts'
 import type { RootState } from '../store/store.ts'
 
 export default function TripLobby() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const trip = useSelector((s: RootState) => s.trip.currentTrip)
-  const members = useSelector((s: RootState) => s.convoy.members)
-  const joined = useSelector((s: RootState) => s.trip.joinedTripIds.includes(trip.id))
+  const trips = useSelector((s: RootState) => s.trip.trips)
+  const trip = id ? trips.find((t) => t.id === id) : undefined
+  const user = useSelector((s: RootState) => s.auth.user)
+  const convoyMembers = useSelector((s: RootState) => (trip && s.convoy.tripId === trip.id ? s.convoy.members : []))
+  const joined = useSelector((s: RootState) => (trip ? s.trip.joinedTripIds.includes(trip.id) : false))
   const pendingRequests = useSelector((s: RootState) =>
-    s.joinRequests.items.filter((r) => r.tripId === trip.id && r.status === 'pending'),
+    trip ? s.joinRequests.items.filter((r) => r.tripId === trip.id && r.status === 'pending') : [],
   )
-  const tripId = id ?? trip.id
   const [inviteState, setInviteState] = useState<'idle' | 'copied' | 'failed'>('idle')
-  const inviteLink = buildInviteLink(trip)
+  const [now, setNow] = useState(() => Date.now())
 
+  // Real countdown: the trip's own date + start time, counted down live.
+  // No invented "24 minutes" — if the time has passed, it says so.
+  const departureMs = useMemo(() => {
+    if (!trip) return null
+    const d = new Date(`${trip.date}T${trip.startTime}:00`)
+    return Number.isNaN(d.getTime()) ? null : d.getTime()
+  }, [trip])
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+  const secondsLeft = departureMs !== null ? Math.max(0, Math.floor((departureMs - now) / 1000)) : null
+  const countdown = secondsLeft !== null
+    ? `${String(Math.floor(secondsLeft / 60)).padStart(2, '0')}:${String(secondsLeft % 60).padStart(2, '0')}`
+    : null
+
+  if (!trip) {
+    return (
+      <div className="page">
+        <AppHeader title="Trip Lobby" showBack />
+        <div style={{ padding: '24px 20px' }}>
+          <EmptyState
+            icon="👥"
+            title="Trip not found"
+            detail="This trip does not exist on this device. Create a trip or join one with an invite code."
+            action={<button className="nt-join" onClick={() => navigate('/trips/create')}>Create a trip</button>}
+          />
+        </div>
+        <BottomNavigation />
+      </div>
+    )
+  }
+
+  const inviteLink = buildInviteLink(trip)
   const copyInvite = async () => {
     const ok = await copyText(buildInviteText(trip))
     setInviteState(ok ? 'copied' : 'failed')
     if (!ok) showToast('Copy did not work — long-press the link below to copy it by hand')
   }
-  // Live countdown to departure (simulated: starts at 24 min, ticks down).
-  const [secondsLeft, setSecondsLeft] = useState(24 * 60)
-  useEffect(() => {
-    const timer = setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000)
-    return () => clearInterval(timer)
-  }, [])
-  const countdown = `${String(Math.floor(secondsLeft / 60)).padStart(2, '0')}:${String(secondsLeft % 60).padStart(2, '0')}`
+
+  // Riders are the convoy's real members when this trip's convoy has
+  // been opened; otherwise the only rider the app can know is you, if
+  // you joined this trip. Nobody else is listed until they join.
+  const selfMember: Member | null =
+    joined && user
+      ? {
+          id: 'self',
+          name: user.name,
+          initials: user.initials,
+          role: isTripLeader(user, trip, convoyMembers) ? 'Leader' : undefined,
+          status: 'online',
+          speedKmh: 0,
+          note: 'You',
+          color: '#007BFF',
+        }
+      : null
+  const displayMembers = convoyMembers.length > 0 ? convoyMembers : selfMember ? [selfMember] : []
 
   return (
     <div className="page">
@@ -37,13 +85,21 @@ export default function TripLobby() {
       <div style={{ paddingTop: 16 }}>
         <TripCard trip={trip} />
       </div>
-      <div className="countdown-card" role="timer" aria-label={`Trip departs in ${countdown}`}>
-        <span>⏱️ Departs in</span>
-        <b>{countdown}</b>
-        <span className="countdown-sub">{trip.date} · {trip.startTime} · {trip.from} → {trip.to}</span>
-      </div>
+      {secondsLeft !== null && secondsLeft > 0 ? (
+        <div className="countdown-card" role="timer" aria-label={`Trip departs in ${countdown}`}>
+          <span>⏱️ Departs in</span>
+          <b>{countdown}</b>
+          <span className="countdown-sub">{trip.date} · {trip.startTime} · {trip.from} → {trip.to}</span>
+        </div>
+      ) : (
+        <div className="countdown-card" role="timer" aria-label="Departure time has passed">
+          <span>⏱️ Departure</span>
+          <b>{trip.date} · {trip.startTime}</b>
+          <span className="countdown-sub">Departure time has passed</span>
+        </div>
+      )}
       <div className="section-label">
-        <h3>Riders · {trip.riders}</h3>
+        <h3>Riders · {displayMembers.length}</h3>
         <span
           className="link"
           role="button"
@@ -92,12 +148,15 @@ export default function TripLobby() {
         )}
       </div>
       <div className="list-wrap">
-        <div className="list-card">
-          {members.map((m) => (
-            <MemberCard key={m.id} member={m} members={members} />
-          ))}
-          <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '10px 0 0' }}>+ {Math.max(0, trip.riders - members.length)} more riders confirmed for this convoy.</p>
-        </div>
+        {displayMembers.length === 0 ? (
+          <EmptyState icon="👥" title="No riders in this convoy yet" detail="Share the invite code above — riders who join will show up here." />
+        ) : (
+          <div className="list-card">
+            {displayMembers.map((m) => (
+              <MemberCard key={m.id} member={m} members={displayMembers} />
+            ))}
+          </div>
+        )}
       </div>
       <div className="section-label"><h3>Trip Details</h3></div>
       <div className="list-wrap">
@@ -109,8 +168,8 @@ export default function TripLobby() {
         </div>
       </div>
       <div className="form-wrap">
-        <Button onClick={() => navigate(`/trips/${tripId}/convoy`)}>Start / Open Convoy Dashboard</Button>
-        <Button variant="ghost" onClick={() => navigate(`/trips/${tripId}/leader`)}>Leader Dashboard</Button>
+        <Button onClick={() => navigate(`/trips/${trip.id}/convoy`)}>Start / Open Convoy Dashboard</Button>
+        <Button variant="ghost" onClick={() => navigate(`/trips/${trip.id}/leader`)}>Leader Dashboard</Button>
       </div>
       <BottomNavigation />
     </div>

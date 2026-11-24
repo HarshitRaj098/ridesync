@@ -1,18 +1,19 @@
 /**
  * Convoy summary — the ONE source of truth for Leader Dashboard and
- * Convoy Dashboard counts (Frontend X2 / REVIEW B8).
+ * Convoy Dashboard counts.
  *
- * Before this module, Leader and Convoy each computed their own counts
- * from the same Redux slice and showed different denominators for the
- * same riders ("Online 3/5" on Leader vs "Total Riders 12" next to it,
- * "Members · 12" on Convoy). Both pages now call `getConvoySummary`
- * with the same store state and render the numbers it returns, so a
- * rider who is offline / stopped / separated in one place is the same
- * in the other, and the health score is the same wherever it is read.
+ * Both pages call `getConvoySummary` with the same store state and
+ * render the numbers it returns, so a rider who is offline / stopped /
+ * separated in one place is the same in the other, and the health score
+ * is the same wherever it is read.
  *
- * This is the mock layer: member positions, speeds and alerts are the
- * simulated convoy state in the store. The real layer (server-computed
- * counts, leader approval, capacity check) waits for Deploy.
+ * Everything here is computed from real local state: the members in the
+ * store (the signed-in rider, plus real members from the backend when
+ * one is connected), the trip the user created or joined, and speeds
+ * recorded from real GPS fixes. With no members and no ride, the
+ * counts are zero and the average speed is zero — the pages show an
+ * empty state instead of a health percentage for a ride that never
+ * happened.
  */
 import { leaderOf, separatedReason, type AlertItem, type Member, type Trip } from '../data/mockData.ts'
 
@@ -31,18 +32,19 @@ export interface ConvoySummary {
   /** Riders currently separated from the convoy, with their reason each. */
   separated: Array<{ member: Member; reason: string }>
   separatedCount: number
-  /** Ride health: 98% safety baseline, minus 3 per separated rider, floor 60. */
+  /** Ride health: 98% baseline, minus 3 per separated rider, floor 60.
+   * Computed from the real separated count — never a fixed number. */
   healthScore: number
-  /** The text must say what the number says — it used to always read
-   * "Convoy healthy" even when riders were separated and the score fell. */
+  /** The text must say what the number says. */
   healthText: { label: string; color: string }
-  /** Real average of the speeds recorded this ride — not the current speed. */
+  /** Average of the speeds actually recorded this ride — 0 when no
+   * speed was ever recorded, not the current speed. */
   avgSpeed: number
-  /** Riders on the trip in total (trip.riders — 12 for Manali). */
+  /** Maximum riders the creator set for this trip. */
   totalRiders: number
-  /** Named riders tracked live (members.length — 5 for Manali). */
+  /** Riders actually in the convoy (members.length). */
   namedCount: number
-  /** Riders on the trip beyond the named ones shown live. */
+  /** Free spots left (rider limit minus riders in the convoy). */
   extraRiders: number
   alertsCount: number
 }
@@ -54,7 +56,7 @@ export function getConvoySummary(args: {
   speedSamples: number[]
   speedKmh: number
 }): ConvoySummary {
-  const { members, trip, alerts, speedSamples, speedKmh } = args
+  const { members, trip, alerts, speedSamples } = args
   const leader = leaderOf(members)
   const online = members.filter((m) => m.status === 'online').length
   const stopped = members.filter((m) => m.status === 'stopped').length
@@ -73,7 +75,7 @@ export function getConvoySummary(args: {
   const avgSpeed =
     speedSamples.length > 0
       ? Math.round(speedSamples.reduce((a, b) => a + b, 0) / speedSamples.length)
-      : speedKmh
+      : 0
   return {
     members,
     alerts,
@@ -96,32 +98,27 @@ export function getConvoySummary(args: {
 
 /**
  * Who leads this trip. A trip created in Create Trip stores its leader
- * in `trip.leaderName` (the creator, or a named rider). The seeded
- * Manali trip stores none, so its leader is the member with
- * `role: 'Leader'` — Rohit Verma.
+ * in `trip.leaderName` (the creator). Otherwise the leader is the member
+ * with `role: 'Leader'` — the signed-in rider, when they lead the trip.
  */
 export function getTripLeaderName(trip: Trip, members: Member[]): string {
   if (trip.leaderName && trip.leaderName.trim().length > 0) return trip.leaderName
-  return leaderOf(members)?.name ?? 'Unknown'
+  return leaderOf(members)?.name ?? 'No leader yet'
 }
 
 /** Names are compared case-insensitively, ignoring extra spaces and a
- * trailing full stop — so "Rohit V." (Create Trip's short option) and
- * "Rohit V" (the same name from an email login) count as the same person. */
+ * trailing full stop — so "Alex K." and "Alex K" count as the same
+ * person. */
 function normalizeName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, ' ').replace(/\.+$/, '')
 }
 
 /**
- * Is the signed-in user the leader of this trip? Mock layer only: the
- * signed-in user is the leader only when their (mock) account name
- * matches the trip's leader name. The seeded Manali leader is Rohit
- * Verma, so a rider signed in as anyone else — e.g. Harshit — is NOT
- * the leader of Manali and sees the read-only Leader Dashboard. A user
- * who creates a trip and picks "You (Trip Creator)" as its leader IS
- * its leader, and sees the controls. Real leader enforcement (by user
- * id, from the server) waits for Deploy — a name match is all the mock
- * layer can honestly check.
+ * Is the signed-in user the leader of this trip? Local layer only: the
+ * signed-in user is the leader when their account name matches the
+ * trip's leader name. A user who creates a trip IS its leader. Real
+ * leader enforcement (by user id, from the server) waits for Deploy —
+ * a name match is all the local layer can honestly check.
  */
 export function isTripLeader(
   user: { name?: string } | null,

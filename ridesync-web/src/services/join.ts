@@ -4,14 +4,14 @@
  * Create Trip, the Trip Lobby and the Leader Dashboard can never drift
  * apart again (Frontend X5).
  *
- * Mock layer only: everything is resolved against the trips in the Redux
+ * Local layer only: everything is resolved against the trips in the Redux
  * store and persisted in localStorage. The real layer (leader approves a
  * stored request, capacity check) waits for Deploy + the request/approve
  * endpoint. Nothing here pretends a server call happened.
  */
 import type { Trip } from '../data/mockData.ts'
 
-/** Trip codes are 6 uppercase letters/digits, e.g. A1B2C9. */
+/** Trip codes are 6 uppercase letters/digits, e.g. K7M2P9. */
 export const CODE_RE = /^[A-Z0-9]{6}$/
 
 /** Base of an invite link: the origin the app is actually served from. */
@@ -48,9 +48,9 @@ export type ParsedInvite =
 
 /**
  * Pull a trip code out of whatever the rider pasted. Accepts:
- * - a bare code: `A1B2C9`
- * - a full link: `https://ridesync-ten.vercel.app/trips/join?code=A1B2C9`
- * - a path link: `https://ridesync.app/join/A1B2C9` or `/trips/join/A1B2C9`
+ * - a bare code: `K7M2P9`
+ * - a full link: `https://ridesync-ten.vercel.app/trips/join?code=K7M2P9`
+ * - a path link: `https://ridesync.app/join/K7M2P9` or `/trips/join/K7M2P9`
  * - a link with the code in the query under `code`
  * Anything else is an inline error, never a silent join.
  */
@@ -84,17 +84,17 @@ export type JoinResolution =
 
 /**
  * Resolve a code against the trips the app knows. Blank and wrong codes
- * are rejected with a clear error — blank no longer joins Manali.
+ * are rejected with a clear error — blank never joins a trip.
  */
 export function resolveJoinCode(code: string, trips: Trip[]): JoinResolution {
   const entered = code.trim().toUpperCase()
-  if (!entered) return { ok: false, error: 'Enter a trip code — the Manali convoy code is A1B2C9.' }
+  if (!entered) return { ok: false, error: 'Enter a trip code.' }
   if (!CODE_RE.test(entered)) {
-    return { ok: false, error: `“${entered}” is not a valid trip code. Codes are 6 characters, e.g. A1B2C9.` }
+    return { ok: false, error: `“${entered}” is not a valid trip code. Codes are 6 characters, e.g. K7M2P9.` }
   }
   const match = trips.find((t) => t.code.toUpperCase() === entered)
   if (!match) {
-    return { ok: false, error: `No trip found with code “${entered}”. Check the code and try again — the Manali convoy code is A1B2C9.` }
+    return { ok: false, error: `No trip found with code “${entered}”. Check the code and try again.` }
   }
   return { ok: true, trip: match }
 }

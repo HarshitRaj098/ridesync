@@ -9,7 +9,6 @@ export default function Home() {
   const navigate = useNavigate()
   const trip = useSelector((s: RootState) => s.trip.currentTrip)
   const trips = useSelector((s: RootState) => s.trip.trips)
-  const pastTrips = trips.filter((t) => t.id !== trip.id)
   const { data: stats, isLoading, isError, refetch } = useQuery({ queryKey: ['rider-stats'], queryFn: fetchRiderStats })
 
   return (
@@ -33,7 +32,7 @@ export default function Home() {
         <button className="qa-item" onClick={() => navigate('/trips/join')} aria-label="Join trip">
           <div className="qa-icon">👥</div><span>Join Trip</span>
         </button>
-        <button className="qa-item" onClick={() => navigate(`/trips/${trip.id}/convoy`)} aria-label="Open my trips">
+        <button className="qa-item" onClick={() => navigate(trip ? `/trips/${trip.id}/convoy` : '/trips/create')} aria-label="Open my trips">
           <div className="qa-icon">🗺️</div><span>My Trips</span>
         </button>
         <button className="qa-item" onClick={() => navigate('/trips/join')} aria-label="Find nearby groups">
@@ -41,57 +40,55 @@ export default function Home() {
         </button>
       </div>
 
-      <div className="section-label" style={{ marginTop: 24 }}>
-        <h3>Upcoming Trip</h3>
-        <Link className="link" to={`/trips/${trip.id}/lobby`}>View lobby</Link>
-      </div>
-      <TripCard trip={trip} />
+      {trip ? (
+        <>
+          <div className="section-label" style={{ marginTop: 24 }}>
+            <h3>Upcoming Trip</h3>
+            <Link className="link" to={`/trips/${trip.id}/lobby`}>View lobby</Link>
+          </div>
+          <TripCard trip={trip} />
+        </>
+      ) : (
+        <div style={{ marginTop: 24 }}>
+          <EmptyState
+            icon="🏍️"
+            title="No trips yet"
+            detail="Create your first trip or join one with an invite code."
+            action={<button className="nt-join" onClick={() => navigate('/trips/create')}>Create a trip</button>}
+          />
+        </div>
+      )}
 
       {isLoading ? (
         <Loader label="Loading your rider stats…" />
       ) : isError ? (
-        <ErrorState title="Stats could not load" detail="Your ride stats are mock data served locally — try again." onRetry={() => void refetch()} />
+        <ErrorState title="Stats could not load" detail="Your ride stats are stored on this device — try again." onRetry={() => void refetch()} />
       ) : (
         <>
           <div className="stats-grid">
-            <div className="stat-card"><b>{stats?.totalRides ?? 47}</b><span>Total Rides</span></div>
-            <div className="stat-card"><b>{(stats?.kmLogged ?? 3140).toLocaleString('en-IN')}</b><span>KM Logged</span></div>
-            <div className="stat-card"><b>{stats?.safetyScore ?? 98}%</b><span>Safety Score</span></div>
+            <div className="stat-card"><b>{stats?.totalRides ?? 0}</b><span>Total Rides</span></div>
+            <div className="stat-card"><b>{(stats?.kmLogged ?? 0).toLocaleString('en-IN')}</b><span>KM Logged</span></div>
+            <div className="stat-card"><b>{stats?.safetyScore === null || stats?.safetyScore === undefined ? '—' : `${stats.safetyScore}%`}</b><span>Safety Score</span></div>
           </div>
-          <p style={{ color: 'var(--text-faint)', fontSize: 11, padding: '8px 20px 0', margin: 0 }}>Demo stats — sample totals, not a real account. Ending a ride in this demo adds to the totals above.</p>
+          {(stats?.totalRides ?? 0) === 0 ? (
+            <p style={{ color: 'var(--text-faint)', fontSize: 11, padding: '8px 20px 0', margin: 0 }}>No rides yet — complete a trip to see your stats here.</p>
+          ) : null}
         </>
       )}
-
-      <div className="section-label"><h3>Live Now</h3></div>
-      <div className="list-wrap">
-        <div className="list-card">
-          <div className="notif-row">
-            <div className="notif-ic">🗺️</div>
-            <div style={{ flex: 1 }}>
-              <b>{trip.name} is live</b>
-              <span>{trip.riders} riders on the road · {trip.from} → {trip.to}{trip.distanceKm > 0 ? ` · ${trip.distanceKm} km` : ''}</span>
-            </div>
-            <button className="nt-join" onClick={() => navigate(`/trips/${trip.id}/convoy`)}>Open</button>
-          </div>
-        </div>
-      </div>
 
       <div className="section-label"><h3>Your Trips</h3></div>
       {trips.length === 0 ? (
         <EmptyState
-          icon="🏍️"
+          icon="🗺️"
           title="No trips yet"
-          detail="Create your first trip or join one with an invite code."
-          action={<button className="nt-join" onClick={() => navigate('/trips/create')}>Create a trip</button>}
+          detail="Trips you create or join will show up here."
+          action={<button className="nt-join" onClick={() => navigate('/trips/join')}>Join a trip</button>}
         />
       ) : (
         <div className="list-wrap">
-          {pastTrips.map((t) => (
+          {trips.map((t) => (
             <TripCard key={t.id} trip={t} />
           ))}
-          {pastTrips.length === 0 ? (
-            <p style={{ color: 'var(--text-dim)', fontSize: 12, padding: '0 4px' }}>No past trips yet — completed trips will show up here.</p>
-          ) : null}
         </div>
       )}
       <BottomNavigation />

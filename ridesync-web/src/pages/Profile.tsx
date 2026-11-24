@@ -18,23 +18,25 @@ export default function Profile() {
       <AppHeader title="Profile" showBack />
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px 20px 8px', gap: 10 }}>
         <div className="avatar lg">{user?.initials ?? 'HR'}</div>
-        <h2 style={{ margin: 0, fontSize: 20 }}>{user?.name ?? 'Harshit Raj'}</h2>
-        <p style={{ margin: 0, color: 'var(--text-dim)', fontSize: 13 }}>{user?.email ?? 'harshit@example.com'}</p>
-        <p style={{ margin: 0, color: 'var(--cyan)', fontSize: 12, fontWeight: 600 }}>🏍️ Rider · Bhopal, India</p>
+        <h2 style={{ margin: 0, fontSize: 20 }}>{user?.name ?? 'Rider'}</h2>
+        <p style={{ margin: 0, color: 'var(--text-dim)', fontSize: 13 }}>{user?.email ?? ''}</p>
+        <p style={{ margin: 0, color: 'var(--cyan)', fontSize: 12, fontWeight: 600 }}>🏍️ Rider</p>
       </div>
 
       {isLoading ? (
         <Loader label="Loading your profile…" />
       ) : isError ? (
-        <ErrorState title="Profile could not load" detail="Your stats are mock data served locally — try again." onRetry={() => void refetch()} />
+        <ErrorState title="Profile could not load" detail="Your stats are stored on this device — try again." onRetry={() => void refetch()} />
       ) : (
         <>
           <div className="stats-grid">
-            <div className="stat-card"><b>{stats?.totalRides ?? 47}</b><span>Total Rides</span></div>
-            <div className="stat-card"><b>{(stats?.kmLogged ?? 3140).toLocaleString('en-IN')}</b><span>KM Logged</span></div>
-            <div className="stat-card"><b>{`${stats?.safetyScore ?? 98}%`}</b><span>Safety Score</span></div>
+            <div className="stat-card"><b>{stats?.totalRides ?? 0}</b><span>Total Rides</span></div>
+            <div className="stat-card"><b>{(stats?.kmLogged ?? 0).toLocaleString('en-IN')}</b><span>KM Logged</span></div>
+            <div className="stat-card"><b>{stats?.safetyScore === null || stats?.safetyScore === undefined ? '—' : `${stats.safetyScore}%`}</b><span>Safety Score</span></div>
           </div>
-          <p style={{ color: 'var(--text-faint)', fontSize: 11, padding: '8px 20px 0', margin: 0 }}>Demo stats — sample totals, not a real account. Ending a ride in this demo adds to the totals above.</p>
+          {(stats?.totalRides ?? 0) === 0 ? (
+            <p style={{ color: 'var(--text-faint)', fontSize: 11, padding: '8px 20px 0', margin: 0 }}>No rides yet — complete a trip to see your stats and safety score here.</p>
+          ) : null}
         </>
       )}
 
@@ -43,7 +45,7 @@ export default function Profile() {
         {historyLoading ? (
           <Loader label="Loading ride history…" />
         ) : historyError ? (
-          <ErrorState title="Ride history could not load" detail="Try again — history is mock data served locally." onRetry={() => void refetchHistory()} />
+          <ErrorState title="Ride history could not load" detail="Try again — history is stored on this device." onRetry={() => void refetchHistory()} />
         ) : (history ?? []).length === 0 ? (
           <EmptyState icon="🏍️" title="No rides yet" detail="Your completed trips will show up here." />
         ) : (

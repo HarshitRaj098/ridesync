@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import type { RootState } from '../store/store.ts'
 
-const CHECKS = ['Checking GPS signal…', 'Checking internet…', 'Verifying session…']
+const CHECKS = ['Loading RideSync…', 'Checking your session…', 'Opening your trips…']
 
 export default function Splash() {
   const navigate = useNavigate()

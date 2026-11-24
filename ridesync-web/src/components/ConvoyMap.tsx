@@ -1,15 +1,12 @@
 import { useEffect } from 'react'
 import L from 'leaflet'
-import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
-import {
-  ROUTE_POINTS,
-  distanceFromLeaderKm,
-  haversineKm,
-  leaderOf,
-  memberRoutePosition,
-  nearestRouteIndex,
-  type Member,
-} from '../data/mockData.ts'
+import { MapContainer, Marker, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
+import { distanceFromLeaderKm, type Member } from '../data/mockData.ts'
+
+/** Default view when the rider's position is unknown: India, zoomed out.
+ * This is only a viewport — it is not a trip, a route or a rider. */
+export const DEFAULT_MAP_CENTER: [number, number] = [20.5937, 78.9629]
+export const DEFAULT_MAP_ZOOM = 5
 
 function InvalidateSize() {
   const map = useMap()
@@ -29,54 +26,32 @@ function InvalidateSize() {
   return null
 }
 
-/**
- * Follow the leader: while follow is on, pan the map to the leader's live
- * position whenever they have moved a meaningful distance from the view
- * centre. Without this the map sat fixed on the Bhopal start point while
- * the convoy rode away — markers drifted off-screen.
- */
-function FollowLeader({ members, follow }: { members: Member[]; follow: boolean }) {
-  const map = useMap()
-  useEffect(() => {
-    if (!follow) return
-    const leader = leaderOf(members)
-    if (!leader) return
-    const centre = map.getCenter()
-    if (haversineKm(centre.lat, centre.lng, leader.lat, leader.lng) > 0.2) {
-      map.panTo([leader.lat, leader.lng], { animate: true })
-    }
-  }, [map, members, follow])
-  return null
-}
-
-/** Compass action: jump back to the leader's LIVE position, north-up,
- * zoom 13. The old version reset to the fixed Bhopal start point, so
- * after the convoy had ridden for a while the compass yanked the map
- * back to where the ride began. */
-function ResetView({ members, signal }: { members: Member[]; signal: number }) {
+/** Compass action: jump back to the rider's real position when known,
+ * otherwise to the default view, zoom 13 when positioned. */
+function ResetView({ userPosition, signal }: { userPosition: [number, number] | null; signal: number }) {
   const map = useMap()
   useEffect(() => {
     if (signal <= 0) return
-    const leader = leaderOf(members)
-    if (leader) map.setView([leader.lat, leader.lng], 13)
-  }, [map, members, signal])
+    if (userPosition) map.setView(userPosition, 13)
+    else map.setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM)
+  }, [map, userPosition, signal])
   return null
 }
 
-/** Recenter button: pan to the leader's live position, keeping the zoom. */
-function PanToLeader({ members, signal }: { members: Member[]; signal: number }) {
+/** Recenter button: pan to the rider's real position, keeping the zoom;
+ * with no position, pan back to the default view. */
+function PanToUser({ userPosition, signal }: { userPosition: [number, number] | null; signal: number }) {
   const map = useMap()
   useEffect(() => {
     if (signal <= 0) return
-    const leader = leaderOf(members)
-    if (leader) map.panTo([leader.lat, leader.lng], { animate: true })
-  }, [map, members, signal])
+    if (userPosition) map.panTo(userPosition, { animate: true })
+    else map.panTo(DEFAULT_MAP_CENTER, { animate: true })
+  }, [map, userPosition, signal])
   return null
 }
 
 /** A manual drag or zoom means the rider is looking around — stop
- * following until they tap recenter or the compass again. Programmatic
- * pans (follow / recenter) do not fire dragstart/zoomstart. */
+ * following until they tap recenter or the compass again. */
 function UserMoveWatcher({ onUserMoved }: { onUserMoved: () => void }) {
   useMapEvents({
     dragstart: () => onUserMoved(),
@@ -100,45 +75,31 @@ function markerIcon(member: Member): L.DivIcon {
 export default function ConvoyMap({
   members,
   satOn,
-  trafficOn = false,
-  follow = true,
+  userPosition,
   onUserMoved = () => undefined,
   resetSignal = 0,
   panSignal = 0,
 }: {
+  /** Real members only. A member without a position has no marker. */
   members: Member[]
   satOn: boolean
-  trafficOn?: boolean
-  /** When true the map pans to follow the leader as the convoy rides. */
-  follow?: boolean
+  /** The rider's real GPS position, or null when unknown. */
+  userPosition: [number, number] | null
   /** Called when the rider drags or zooms the map by hand. */
   onUserMoved?: () => void
-  /** Bump to jump to the leader, zoom 13 (compass). */
+  /** Bump to jump to the rider's position (compass). */
   resetSignal?: number
-  /** Bump to pan to the leader, keeping the zoom (recenter). */
+  /** Bump to pan to the rider's position, keeping the zoom (recenter). */
   panSignal?: number
 }) {
-  const leader = leaderOf(members)
-  // The map opens on the convoy's live position (214 km into the trip),
-  // not on the Bhopal start point — otherwise the markers start off-screen.
-  const [initialLat, initialLng] = leader
-    ? [leader.lat, leader.lng]
-    : memberRoutePosition('rohit', 214, 612)
-  // Simulated congestion on the stretch the convoy is actually riding
-  // (the three route points nearest the leader), not a fixed segment.
-  const trafficSegment: Array<[number, number]> = (() => {
-    if (!leader) return [ROUTE_POINTS[2], ROUTE_POINTS[3], ROUTE_POINTS[4]]
-    const i = nearestRouteIndex(leader.lat, leader.lng)
-    const start = Math.max(0, Math.min(i - 1, ROUTE_POINTS.length - 3))
-    return [ROUTE_POINTS[start], ROUTE_POINTS[start + 1], ROUTE_POINTS[start + 2]]
-  })()
+  const initialCenter: [number, number] = userPosition ?? DEFAULT_MAP_CENTER
+  const initialZoom = userPosition ? 13 : DEFAULT_MAP_ZOOM
   return (
     <div className="leaflet-map">
-      <MapContainer center={[initialLat, initialLng]} zoom={13} zoomControl={false} attributionControl={false} style={{ height: '100%', width: '100%' }}>
+      <MapContainer center={initialCenter} zoom={initialZoom} zoomControl={false} attributionControl={false} style={{ height: '100%', width: '100%' }}>
         <InvalidateSize />
-        <FollowLeader members={members} follow={follow} />
-        <ResetView members={members} signal={resetSignal} />
-        <PanToLeader members={members} signal={panSignal} />
+        <ResetView userPosition={userPosition} signal={resetSignal} />
+        <PanToUser userPosition={userPosition} signal={panSignal} />
         <UserMoveWatcher onUserMoved={onUserMoved} />
         <TileLayer
           url={
@@ -148,20 +109,20 @@ export default function ConvoyMap({
           }
           maxZoom={19}
         />
-        <Polyline positions={ROUTE_POINTS} pathOptions={{ color: '#00C2FF', weight: 3, opacity: 0.6, dashArray: '1 10', lineCap: 'round' }} />
-        {trafficOn ? (
-          <Polyline positions={trafficSegment} pathOptions={{ color: '#EF4444', weight: 6, opacity: 0.85, lineCap: 'round' }} />
-        ) : null}
-        {members.map((m) => (
-          <Marker key={m.id} position={[m.lat, m.lng]} icon={markerIcon(m)}>
-            <Tooltip direction="top" offset={[0, -10]}>
-              {m.name} · {m.status === 'online' ? `${m.speedKmh} km/h` : m.status}
-              {m.role !== 'Leader' ? ` · ${distanceFromLeaderKm(m, members).toFixed(1)} km from leader` : ' · Leader'}
-            </Tooltip>
-          </Marker>
-        ))}
+        {members
+          .filter((m) => m.lat !== undefined && m.lng !== undefined)
+          .map((m) => (
+            <Marker key={m.id} position={[m.lat as number, m.lng as number]} icon={markerIcon(m)}>
+              <Tooltip direction="top" offset={[0, -10]}>
+                {m.name} · {m.status === 'online' ? `${m.speedKmh} km/h` : m.status}
+                {m.role !== 'Leader' ? ` · ${distanceFromLeaderKm(m, members).toFixed(1)} km from leader` : ' · Leader'}
+              </Tooltip>
+            </Marker>
+          ))}
       </MapContainer>
-      {trafficOn ? <div className="traffic-chip">🚦 Traffic — simulated, not live data</div> : null}
+      {userPosition ? null : (
+        <div className="traffic-chip">📍 Your location is not on the map yet — turn on location sharing in Settings to see yourself here.</div>
+      )}
     </div>
   )
 }

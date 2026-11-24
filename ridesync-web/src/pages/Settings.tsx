@@ -98,7 +98,7 @@ export default function Settings() {
           {contacts.length === 0 ? (
             <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '0 0 12px', lineHeight: 1.6 }}>
               No emergency contacts saved yet — SOS cannot list anyone until you add one. Contacts are stored
-              only in this browser; in the demo they are listed for SOS, not messaged.
+              only in this browser; they are listed for SOS, not messaged — no messaging service is connected yet.
             </p>
           ) : (
             contacts.map((c) => (
@@ -143,7 +143,7 @@ export default function Settings() {
             ) : null}
           </div>
           <div className="setting-row"><div><b>Signed in as</b><span>{user?.email ?? '—'}</span></div></div>
-          <div className="setting-row"><div><b>About RideSync</b><span>Smart Convoy Management Platform · Web v0.1.0 (mock data)</span></div></div>
+          <div className="setting-row"><div><b>About RideSync</b><span>Smart Convoy Management Platform · Web v0.1.0</span></div></div>
         </div>
       </div>
 
