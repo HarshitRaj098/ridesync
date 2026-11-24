@@ -23,6 +23,17 @@ function Recenter({ center }: { center: [number, number] }) {
   return null
 }
 
+/** Compass action: reset to the north-up default view — convoy centred,
+ * zoom 13. Leaflet is always north-up, so "reset view" is what the single
+ * compass honestly does. Fires only when the signal increments (> 0). */
+function ResetView({ signal }: { signal: number }) {
+  const map = useMap()
+  useEffect(() => {
+    if (signal > 0) map.setView([BASE_LAT, BASE_LNG], 13)
+  }, [map, signal])
+  return null
+}
+
 function markerIcon(member: Member): L.DivIcon {
   const isLeader = member.role === 'Leader'
   const size = isLeader ? 22 : 16
@@ -40,17 +51,20 @@ export default function ConvoyMap({
   center,
   satOn,
   trafficOn = false,
+  resetView = 0,
 }: {
   members: Member[]
   center: [number, number]
   satOn: boolean
   trafficOn?: boolean
+  resetView?: number
 }) {
   return (
     <div className="leaflet-map">
       <MapContainer center={[BASE_LAT, BASE_LNG]} zoom={13} zoomControl={false} attributionControl={false} style={{ height: '100%', width: '100%' }}>
         <InvalidateSize />
         <Recenter center={center} />
+        <ResetView signal={resetView} />
         <TileLayer
           url={
             satOn

@@ -345,6 +345,12 @@ input, select, textarea { font-family: inherit; }
 .countdown-card b { font-size: 30px; font-family: 'JetBrains Mono', monospace; color: var(--cyan); }
 .countdown-card .countdown-sub { font-size: 11px; color: var(--text-faint); }
 .traffic-chip { position: absolute; top: 76px; left: 50%; transform: translateX(-50%); z-index: 500; background: rgba(18, 24, 38, 0.9); border: 1px solid rgba(239, 68, 68, 0.5); color: #fca5a5; font-size: 11px; font-weight: 600; padding: 6px 12px; border-radius: 100px; white-space: nowrap; }
+/* Photo taken from the map camera button — preview only, kept on this device. */
+.map-photo-preview { position: absolute; left: 16px; top: 74px; z-index: 500; width: 168px; background: rgba(18, 24, 38, 0.92); backdrop-filter: blur(14px); border: 1px solid var(--border-strong); border-radius: 14px; padding: 8px; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4); }
+.map-photo-preview img { width: 100%; border-radius: 8px; display: block; }
+.map-photo-preview p { font-size: 11px; color: var(--text-dim); margin: 6px 2px; line-height: 1.4; }
+.map-photo-preview button { background: none; border: none; color: var(--cyan); font-size: 12px; font-weight: 700; cursor: pointer; padding: 2px; }
+.map-photo-error { position: absolute; left: 16px; top: 74px; z-index: 500; max-width: 260px; background: rgba(18, 24, 38, 0.92); border: 1px solid rgba(239, 68, 68, 0.5); color: #fca5a5; font-size: 12px; font-weight: 600; padding: 10px 12px; border-radius: 12px; }
 .circle-btn.active { border-color: var(--cyan); color: var(--cyan); box-shadow: 0 0 0 2px rgba(0, 194, 255, 0.25); }
 .filter-row { display: flex; gap: 8px; padding: 0 20px 14px; }
 .filter-chip { padding: 8px 14px; border-radius: 100px; font-size: 12px; font-weight: 700; background: var(--card); border: 1px solid var(--border-strong); color: var(--text-dim); }

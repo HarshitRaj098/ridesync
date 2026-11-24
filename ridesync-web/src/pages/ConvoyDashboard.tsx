@@ -25,6 +25,9 @@ export default function ConvoyDashboard() {
   const [satOn, setSatOn] = useState(false)
   const [trafficOn, setTrafficOn] = useState(false)
   const [center, setCenter] = useState<[number, number]>([BASE_LAT, BASE_LNG])
+  // Bumped when the single compass button is tapped: ConvoyMap resets to
+  // the north-up default view (convoy centred, zoom 13).
+  const [resetView, setResetView] = useState(0)
 
   const speedRef = useRef(speedKmh)
   speedRef.current = speedKmh
@@ -119,7 +122,7 @@ export default function ConvoyDashboard() {
   return (
     <div className="page no-nav dash-screen">
       <div className="map-wrap">
-        <ConvoyMap members={members} center={center} satOn={satOn} trafficOn={trafficOn} />
+        <ConvoyMap members={members} center={center} satOn={satOn} trafficOn={trafficOn} resetView={resetView} />
 
         <div className="map-overlay-top">
           <button className="circle-btn" onClick={() => navigate('/home')} aria-label="Back home">←</button>
@@ -127,7 +130,6 @@ export default function ConvoyDashboard() {
             <span className="rec" />
             <span>{formatRideTime(rideSeconds)}</span>
           </div>
-          <button className="circle-btn" onClick={() => showToast(satOn ? 'Standard view' : 'Satellite view')} aria-label="Toggle map style">🧭</button>
         </div>
 
         <MapControls
@@ -142,6 +144,8 @@ export default function ConvoyDashboard() {
             setCenter([BASE_LAT, BASE_LNG])
             showToast('Recentered on convoy')
           }}
+          onResetView={() => setResetView((v) => v + 1)}
+          trip={trip}
         />
 
         <div className="speed-cluster">

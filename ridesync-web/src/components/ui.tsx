@@ -1,9 +1,10 @@
-import { Component, useEffect, useRef, useState, type ButtonHTMLAttributes, type ErrorInfo, type InputHTMLAttributes, type ReactNode } from 'react'
+import { Component, useEffect, useRef, useState, type ButtonHTMLAttributes, type ChangeEvent, type ErrorInfo, type InputHTMLAttributes, type ReactNode } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { distanceFromLeaderKm, separatedReason, type Member, type Trip } from '../data/mockData.ts'
 import type { RootState } from '../store/store.ts'
 import { setVoiceActive, openSos } from '../store/store.ts'
+import { buildInviteText, copyText } from '../services/join.ts'
 
 /* ---------- Validation helpers (Week 2) ---------- */
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -339,19 +340,126 @@ export function BottomNavigation() {
   )
 }
 
-/* ---------- MapControls ---------- */
-export function MapControls({ onRecenter, onToggleSat, satOn, onToggleTraffic, trafficOn }: { onRecenter: () => void; onToggleSat: () => void; satOn: boolean; onToggleTraffic?: () => void; trafficOn?: boolean }) {
+/* ---------- MapControls — one compass, one satellite, real share & camera ----------
+ * The Convoy map has exactly ONE compass (this one). It resets the map to
+ * the north-up default view — convoy centred, zoom 13. Leaflet is always
+ * north-up, so a compass that only toasts "heading north" would be fake.
+ * Share copies the real invite link + code through the shared join logic
+ * (src/services/join.ts) and says "copied" only when the copy succeeded.
+ * Camera opens the device camera / photo picker and shows the photo you
+ * took, on this device only — nothing is uploaded or shared with the
+ * convoy, because there is no photo server yet. */
+export function MapControls({ onRecenter, onResetView, onToggleSat, satOn, onToggleTraffic, trafficOn, trip }: {
+  onRecenter: () => void
+  onResetView: () => void
+  onToggleSat: () => void
+  satOn: boolean
+  onToggleTraffic?: () => void
+  trafficOn?: boolean
+  trip: { name: string; code: string }
+}) {
+  const [copied, setCopied] = useState(false)
+  const [shareFailedText, setShareFailedText] = useState('')
+  const [photoUrl, setPhotoUrl] = useState('')
+  const [photoError, setPhotoError] = useState('')
+  const fileRef = useRef<HTMLInputElement | null>(null)
+  const copyTimerRef = useRef<number | null>(null)
+  const photoUrlRef = useRef('')
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current)
+      if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current)
+    }
+  }, [])
+
+  const shareInvite = async () => {
+    const text = buildInviteText(trip)
+    const ok = await copyText(text)
+    if (ok) {
+      setCopied(true)
+      showToast('Invite link + code copied')
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = window.setTimeout(() => setCopied(false), 2000)
+    } else {
+      // No fake "copied" toast: show the link so it can be copied by hand.
+      setShareFailedText(text)
+    }
+  }
+
+  const onPhotoPicked = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return // picker dismissed — nothing happened, no toast.
+    if (!file.type.startsWith('image/')) {
+      setPhotoError('That file is not a photo. Choose an image file.')
+      return
+    }
+    setPhotoError('')
+    if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current)
+    const url = URL.createObjectURL(file)
+    photoUrlRef.current = url
+    setPhotoUrl(url)
+  }
+
+  const dismissPhoto = () => {
+    if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current)
+    photoUrlRef.current = ''
+    setPhotoUrl('')
+  }
+
   return (
-    <div className="map-side-controls">
-      <button className="circle-btn" title="Compass" aria-label="Compass — heading north" onClick={() => showToast('Compass: heading north')}>🧭</button>
-      <button className="circle-btn" title="Recenter" aria-label="Recenter map on convoy" onClick={onRecenter}>◎</button>
-      <button className="circle-btn" title={satOn ? 'Standard view' : 'Satellite view'} aria-label={satOn ? 'Switch to standard map view' : 'Switch to satellite view'} aria-pressed={satOn} onClick={onToggleSat}>🛰️</button>
-      {onToggleTraffic ? (
-        <button className={`circle-btn${trafficOn ? ' active' : ''}`} title="Traffic (simulated)" aria-label="Toggle simulated traffic layer" aria-pressed={Boolean(trafficOn)} onClick={onToggleTraffic}>🚦</button>
+    <>
+      <div className="map-side-controls">
+        <button className="circle-btn" title="Compass — reset view north-up" aria-label="Compass — reset map view north-up" onClick={onResetView}>🧭</button>
+        <button className="circle-btn" title="Recenter" aria-label="Recenter map on convoy" onClick={onRecenter}>◎</button>
+        <button className="circle-btn" title={satOn ? 'Standard view' : 'Satellite view'} aria-label={satOn ? 'Switch to standard map view' : 'Switch to satellite view'} aria-pressed={satOn} onClick={onToggleSat}>🛰️</button>
+        {onToggleTraffic ? (
+          <button className={`circle-btn${trafficOn ? ' active' : ''}`} title="Traffic (simulated)" aria-label="Toggle simulated traffic layer" aria-pressed={Boolean(trafficOn)} onClick={onToggleTraffic}>🚦</button>
+        ) : null}
+        <button className={`circle-btn${copied ? ' active' : ''}`} title="Share invite link + code" aria-label="Share trip invite link and code" aria-pressed={copied} onClick={shareInvite}>{copied ? '✓' : '🔗'}</button>
+        <button className="circle-btn" title="Take a photo" aria-label="Take a photo" onClick={() => fileRef.current?.click()}>📷</button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          aria-hidden="true"
+          tabIndex={-1}
+          style={{ display: 'none' }}
+          onChange={onPhotoPicked}
+        />
+      </div>
+
+      {photoError ? <div className="map-photo-error" role="alert">{photoError}</div> : null}
+
+      {photoUrl ? (
+        <div className="map-photo-preview">
+          <img src={photoUrl} alt="Photo taken on this ride" />
+          <p>On this device only — not shared with the convoy.</p>
+          <button type="button" onClick={dismissPhoto} aria-label="Discard photo">Discard ✕</button>
+        </div>
       ) : null}
-      <button className="circle-btn" title="Share live location" aria-label="Share live location" onClick={() => showToast('Live location shared')}>🔗</button>
-      <button className="circle-btn" title="Camera" aria-label="Open camera" onClick={() => showToast('Camera opened')}>📷</button>
-    </div>
+
+      {shareFailedText ? (
+        <Modal
+          title="Copy the invite link"
+          icon="🔗"
+          onClose={() => setShareFailedText('')}
+          actions={<button className="btn-confirm" onClick={() => setShareFailedText('')}>Done</button>}
+        >
+          <p>Copy didn’t work in this browser, so nothing was copied. Select the link below and copy it by hand:</p>
+          <input
+            type="text"
+            readOnly
+            value={shareFailedText}
+            aria-label="Invite link and code"
+            onFocus={(e) => e.target.select()}
+            style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border-strong)', background: 'var(--card)', color: 'var(--text)', fontSize: 13 }}
+          />
+        </Modal>
+      ) : null}
+    </>
   )
 }
 
