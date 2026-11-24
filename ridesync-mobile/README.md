@@ -90,9 +90,13 @@ npm run typecheck   # tsc --noEmit
 - Location permission is requested by `expo-location`; the app currently
   simulates movement, so it works without granting it.
 
-## Connecting the real backend (TODO)
+## Connecting the real backend
 
-1. Build the Node.js + MongoDB backend from the Architecture doc.
+The backend now exists in this repo: `../ridesync-server/` (Node.js +
+Express + Socket.IO + MongoDB, JWT auth, seeded Manali convoy, demo login
+`demo@ridesync.app` / `ridesync123`). To use it:
+
+1. Run the server locally (`cd ../ridesync-server && npm install && npm run dev`, localhost:4000) or deploy it (see its README for Render + Atlas).
 2. Set `EXPO_PUBLIC_API_URL` (see `src/api/client.ts`) and
    `EXPO_PUBLIC_SOCKET_URL` + `EXPO_PUBLIC_USE_REAL_SOCKET=1`
    (see `src/socket/socketService.ts`).
@@ -100,6 +104,13 @@ npm run typecheck   # tsc --noEmit
    calls, and the mock auth in `src/store/slices/authSlice.ts` with real JWT
    auth. Socket events to subscribe to: `location:update`, `member:join`,
    `member:left`, `sos`, `trip:update`, `broadcast`.
+
+## App assets
+
+`src/assets/` now has a generated app icon (`icon.png`, 1024×1024), splash
+screen (`splash.png`) and `favicon.png` in the RideSync dark-blue/cyan
+style, matching `app.json`. These are PNG binaries, so they were uploaded
+to GitHub through the web UI rather than the text-only snapshot push.
 
 ## Project structure
 
