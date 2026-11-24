@@ -3,7 +3,8 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import ConvoyMap from '../components/ConvoyMap.tsx'
 import { EmptyState, MapControls, MemberCard, Modal, SOSButton, VoiceButton, showToast } from '../components/ui.tsx'
-import { BASE_LAT, BASE_LNG, formatRideTime, separatedReason } from '../data/mockData.ts'
+import { BASE_LAT, BASE_LNG, formatRideTime } from '../data/mockData.ts'
+import { getConvoySummary } from '../services/convoySummary.ts'
 import { browserNotify } from '../services/notify.ts'
 import { isRealApi, postChat, sendSosApi } from '../services/api.ts'
 import { createRealSocket, disconnectRealSocket, isRealSocket } from '../services/socketService.ts'
@@ -16,7 +17,7 @@ type Tab = 'members' | 'chat' | 'alerts'
 export default function ConvoyDashboard() {
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
-  const { members, chat, alerts, rideSeconds, speedKmh, distanceCoveredKm, voiceActive, sosActive, sosSent } = useSelector((s: RootState) => s.convoy)
+  const { members, chat, alerts, rideSeconds, speedKmh, speedSamples, distanceCoveredKm, voiceActive, sosActive, sosSent } = useSelector((s: RootState) => s.convoy)
   const trip = useSelector((s: RootState) => s.trip.currentTrip)
   const user = useSelector((s: RootState) => s.auth.user)
   const locationSharing = useSelector((s: RootState) => s.settings.locationSharing)
@@ -113,7 +114,11 @@ export default function ConvoyDashboard() {
   const gaugePct = Math.min(speedKmh / 120, 1)
   const gaugeOffset = 264 - 264 * gaugePct * 0.75
 
-  const separatedCount = members.filter((m) => separatedReason(m, members)).length
+  // ONE source of truth (Frontend X2): the same summary the Leader
+  // Dashboard reads — same online / separated / extra-rider counts, same
+  // health score. A rider separated here is separated there too.
+  const summary = getConvoySummary({ members, trip, alerts, speedSamples, speedKmh })
+  const separatedCount = summary.separatedCount
   const sendChat = (e: FormEvent) => {
     e.preventDefault()
     const text = chatText.trim()
@@ -192,7 +197,7 @@ export default function ConvoyDashboard() {
             <div className="gauge-center"><b>{speedKmh}</b><span>km/h</span></div>
           </div>
           <div className="eta-chip">ETA {etaText}{trip.distanceKm > 0 ? ` · ${remainingKm} km left` : ''}</div>
-          <div className="eta-chip">{trip.name} · {members.filter((m) => m.status === 'online').length} riding · {Math.round(distanceCoveredKm)} km done</div>
+          <div className="eta-chip">{trip.name} · {summary.online} riding · {Math.round(distanceCoveredKm)} km done</div>
           <div className="eta-chip">Demo map · simulated positions, not live GPS</div>
           {!locationSharing ? <div className="eta-chip">📍 Location sharing off — your position is hidden from the convoy</div> : null}
           {!follow ? <div className="eta-chip">Map paused — tap ◎ to follow the convoy again</div> : null}
@@ -217,7 +222,7 @@ export default function ConvoyDashboard() {
                 {members.map((m) => (
                   <MemberCard key={m.id} member={m} members={members} />
                 ))}
-                <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '10px 0 0' }}>+ {Math.max(0, trip.riders - members.length)} more riders in this convoy. {voiceActive ? '🎙️ Push-to-talk is live.' : ''}</p>
+                <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '10px 0 0' }}>+ {summary.extraRiders} more riders in this convoy. {voiceActive ? '🎙️ Push-to-talk is live.' : ''}</p>
               </div>
             )}
             {tab === 'chat' && (

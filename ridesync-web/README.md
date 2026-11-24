@@ -191,6 +191,15 @@ Two writers fought over rider positions: the 1s store tick random-walked members
 - **Real traffic** — the traffic layer is a simulated overlay on the stretch being ridden, not a live traffic feed.
 - **Real trips** — created/joined trips live only in this browser (Redux + localStorage); nothing is shared with other riders.
 
+## Leader Dashboard — concluded (mock layer, 2026-11-25)
+
+- **One source of truth:** `src/services/convoySummary.ts` (`getConvoySummary`) computes online / stopped / offline / separated, health score, average speed, total vs named riders and alerts from the same store state. The Leader Dashboard and the Convoy Dashboard both read it — no second hard-coded count anywhere. A rider separated on one screen is separated on the other; "Online 3 / 5 named" and "Total riders 12" are now labelled with what each number counts.
+- **Leader-only controls are actually leader-only:** `isTripLeader` matches the signed-in user's (mock) account name against the trip's leader — `trip.leaderName`, or the member with `role: 'Leader'` for the seeded Manali trip (Rohit Verma). A non-leader opening `/trips/:id/leader` sees a clear read-only view (health, stats, riders, analytics) with a note naming the leader and saying the controls are hidden — not a toast, not the controls. Join Requests and Leader Actions (broadcast, regroup, end trip) only render for the leader. A user who creates a trip and picks "You (Trip Creator)" as its leader IS its leader and sees the controls.
+- **Broadcast and regroup unchanged:** same store actions as before — broadcast posts to convoy chat + a notification, regroup posts a regroup alert + notification.
+- **End-trip summary unchanged:** still the live health / distance / time values from the previous pass.
+
+Still mock: the leader check is a name match — real enforcement by user id needs the server (Deploy). Leader approval of join requests and capacity checks also still need Deploy + the request/approve endpoint.
+
 ## Backend status
 
 - ✅ **Real backend exists** — `../ridesync-server` (REST + Socket.IO +

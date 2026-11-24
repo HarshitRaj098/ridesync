@@ -3,7 +3,8 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { AppHeader, BottomNavigation, Button, EmptyState, MemberCard, Modal, showToast } from '../components/ui.tsx'
-import { SPEED_HISTORY, formatRideTime, separatedReason } from '../data/mockData.ts'
+import { SPEED_HISTORY, formatRideTime } from '../data/mockData.ts'
+import { getConvoySummary, isTripLeader } from '../services/convoySummary.ts'
 import { browserNotify } from '../services/notify.ts'
 import { addChat, addNotification, recordCompletedTrip, regroup } from '../store/store.ts'
 import type { RootState } from '../store/store.ts'
@@ -22,24 +23,18 @@ export default function LeaderDashboard() {
   const [broadcastError, setBroadcastError] = useState('')
   const [showSummary, setShowSummary] = useState(false)
 
-  const online = members.filter((m) => m.status === 'online').length
-  const stopped = members.filter((m) => m.status === 'stopped').length
-  const offline = members.filter((m) => m.status === 'offline').length
-  const separated = members.filter((m) => separatedReason(m, members)).length
-  // Ride health: mock score derived from live member states (98% safety baseline).
-  const healthScore = Math.max(60, 98 - separated * 3)
-  // The text must say what the number says — it used to always read
-  // "Convoy healthy" even when riders were separated and the score fell.
-  const healthText =
-    separated === 0
-      ? { label: '● Convoy healthy', color: 'var(--success)' }
-      : healthScore >= 85
-        ? { label: `● ${separated} rider${separated > 1 ? 's' : ''} separated — mostly healthy`, color: 'var(--warning)' }
-        : { label: `● ${separated} rider${separated > 1 ? 's' : ''} separated — needs attention`, color: 'var(--danger)' }
-  // Real average of the speeds recorded this ride — not the current speed.
-  const avgSpeed = speedSamples.length > 0
-    ? Math.round(speedSamples.reduce((a, b) => a + b, 0) / speedSamples.length)
-    : speedKmh
+  // ONE source of truth (Frontend X2): every count, the health score and
+  // the average speed on this page come from the same summary the Convoy
+  // Dashboard reads — no second hard-coded count anywhere. A rider who is
+  // offline / stopped / separated here is the same on the map screen.
+  const summary = getConvoySummary({ members, trip, alerts, speedSamples, speedKmh })
+  const { online, stopped, offline, separatedCount: separated, healthScore, healthText, avgSpeed } = summary
+  // Leader-only controls are actually leader-only now: the signed-in user
+  // is the leader only when their (mock) account name matches the trip's
+  // leader. The seeded Manali leader is Rohit Verma, so anyone signed in
+  // as anyone else sees this page read-only. A user who creates a trip
+  // and picks "You (Trip Creator)" as its leader IS its leader.
+  const isLeader = isTripLeader(user, trip, members)
   const maxSpeed = Math.max(...SPEED_HISTORY.map((s) => s.value), speedKmh)
 
   const sendBroadcast = () => {
@@ -93,14 +88,14 @@ export default function LeaderDashboard() {
       </div>
 
       <div className="leader-grid">
-        <div className="stat-card"><b>{online} / {members.length}</b><span>Online Riders*</span></div>
+        <div className="stat-card"><b>{online} / {summary.namedCount}</b><span>Online · named riders*</span></div>
         <div className="stat-card"><b>{separated}</b><span>Separated</span></div>
         <div className="stat-card"><b>{stopped}</b><span>Stopped</span></div>
         <div className="stat-card"><b>{offline}</b><span>Offline</span></div>
         <div className="stat-card"><b>{avgSpeed} km/h</b><span>Avg Speed (this ride)</span></div>
-        <div className="stat-card"><b>{trip.riders}</b><span>Total Riders</span></div>
+        <div className="stat-card"><b>{summary.totalRiders}</b><span>Total riders · on trip</span></div>
       </div>
-      <p style={{ color: 'var(--text-faint)', fontSize: 11, padding: '8px 20px 0', margin: 0 }}>* Online counts the 5 named riders shown live; {trip.riders} riders are on the trip in total (mock data).</p>
+      <p style={{ color: 'var(--text-faint)', fontSize: 11, padding: '8px 20px 0', margin: 0 }}>* Online counts the {summary.namedCount} named riders tracked live; {summary.totalRiders} riders are on the trip in total ({summary.extraRiders} beyond the named riders) — mock data.</p>
 
       <div className="section-label"><h3>Riders</h3></div>
       <div className="list-wrap">
@@ -111,52 +106,77 @@ export default function LeaderDashboard() {
         </div>
       </div>
 
-      <div className="section-label"><h3>Join Requests · {pendingRequests.length}</h3></div>
-      <div className="list-wrap">
-        {pendingRequests.length === 0 ? (
-          <EmptyState icon="✉️" title="No pending join requests" detail="When a rider requests to join this trip, their name shows up here so you can see who is waiting." />
-        ) : (
-          <div className="list-card">
-            {pendingRequests.map((r) => (
-              <div className="request-row" key={r.id}>
-                <div className="m-avatar">{r.requesterInitials}</div>
-                <div className="nt-info">
-                  <b>{r.requesterName}</b>
-                  <span>
-                    Asked to join {r.tripName} · {new Date(r.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
-                <span className="nt-pending">Pending</span>
+      {isLeader ? (
+        <>
+          <div className="section-label"><h3>Join Requests · {pendingRequests.length}</h3></div>
+          <div className="list-wrap">
+            {pendingRequests.length === 0 ? (
+              <EmptyState icon="✉️" title="No pending join requests" detail="When a rider requests to join this trip, their name shows up here so you can see who is waiting." />
+            ) : (
+              <div className="list-card">
+                {pendingRequests.map((r) => (
+                  <div className="request-row" key={r.id}>
+                    <div className="m-avatar">{r.requesterInitials}</div>
+                    <div className="nt-info">
+                      <b>{r.requesterName}</b>
+                      <span>
+                        Asked to join {r.tripName} · {new Date(r.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <span className="nt-pending">Pending</span>
+                  </div>
+                ))}
+                <p style={{ color: 'var(--text-faint)', fontSize: 12, margin: '10px 0 0' }}>
+                  Approving a request needs the real backend (after Deploy) — for now requests are
+                  stored locally and shown here, and the requester can cancel theirs from Join Trip.
+                </p>
               </div>
-            ))}
-            <p style={{ color: 'var(--text-faint)', fontSize: 12, margin: '10px 0 0' }}>
-              Approving a request needs the real backend (after Deploy) — for now requests are
-              stored locally and shown here, and the requester can cancel theirs from Join Trip.
-            </p>
+            )}
           </div>
-        )}
-      </div>
 
-      <div className="section-label"><h3>Leader Actions</h3></div>
-      <div className="form-wrap" style={{ paddingTop: 0 }}>
-        <Button onClick={doRegroup}>🔄 Regroup Convoy</Button>
-        <div className="field" style={{ marginTop: 14 }}>
-          <label htmlFor="broadcast">Broadcast message</label>
-          <input
-            id="broadcast"
-            type="text"
-            placeholder="Message all riders…"
-            maxLength={200}
-            value={broadcast}
-            onChange={(e) => { setBroadcast(e.target.value); if (broadcastError) setBroadcastError('') }}
-            aria-invalid={Boolean(broadcastError)}
-          />
-          {broadcastError ? <span className="error" role="alert">{broadcastError}</span> : null}
-          <span style={{ color: 'var(--text-faint)', fontSize: 11 }}>Broadcasts also appear in Convoy chat and Notifications.</span>
-        </div>
-        <Button variant="ghost" onClick={sendBroadcast}>📣 Send Broadcast</Button>
-        <Button variant="danger" onClick={() => setShowSummary(true)}>End Trip</Button>
-      </div>
+          <div className="section-label"><h3>Leader Actions</h3></div>
+          <div className="form-wrap" style={{ paddingTop: 0 }}>
+            <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '0 0 12px' }}>
+              Signed in as {user?.name ?? 'the leader'} — you lead this trip, so these controls are yours.
+            </p>
+            <Button onClick={doRegroup}>🔄 Regroup Convoy</Button>
+            <div className="field" style={{ marginTop: 14 }}>
+              <label htmlFor="broadcast">Broadcast message</label>
+              <input
+                id="broadcast"
+                type="text"
+                placeholder="Message all riders…"
+                maxLength={200}
+                value={broadcast}
+                onChange={(e) => { setBroadcast(e.target.value); if (broadcastError) setBroadcastError('') }}
+                aria-invalid={Boolean(broadcastError)}
+              />
+              {broadcastError ? <span className="error" role="alert">{broadcastError}</span> : null}
+              <span style={{ color: 'var(--text-faint)', fontSize: 11 }}>Broadcasts also appear in Convoy chat and Notifications.</span>
+            </div>
+            <Button variant="ghost" onClick={sendBroadcast}>📣 Send Broadcast</Button>
+            <Button variant="danger" onClick={() => setShowSummary(true)}>End Trip</Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="section-label"><h3>Leader Actions</h3></div>
+          <div className="list-wrap">
+            <div className="list-card read-only-note">
+              <b>👁️ Viewing as a rider — read-only</b>
+              <p>
+                Only {summary.leaderName} — the leader of this trip — can broadcast, ask the convoy to
+                regroup, end the trip, or see join requests. You are signed in as {user?.name ?? 'a rider'},
+                so those controls are hidden for you.
+              </p>
+              <p style={{ marginBottom: 0 }}>
+                You still see the same live stats, riders and alerts as the leader — only the
+                controls are leader-only.
+              </p>
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="section-label"><h3>Analytics — Speed (km/h)</h3></div>
       <div className="list-wrap">
@@ -168,7 +188,7 @@ export default function LeaderDashboard() {
               <b style={{ width: 34, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace' }}>{s.value}</b>
             </div>
           ))}
-          <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '10px 0 0' }}>Alerts this ride: {alerts.length} · Ride health {healthScore}% · Demo data — sample speeds from the prototype, not this ride's GPS. Current speed now: {speedKmh} km/h.</p>
+          <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '10px 0 0' }}>Alerts this ride: {summary.alertsCount} · Ride health {healthScore}% · Demo data — sample speeds from the prototype, not this ride's GPS. Current speed now: {speedKmh} km/h.</p>
         </div>
       </div>
 
@@ -183,7 +203,7 @@ export default function LeaderDashboard() {
           <div className="summary-grid">
             <div className="stat-card"><b>{Math.round(distanceCoveredKm)} km</b><span>Distance ridden</span></div>
             <div className="stat-card"><b>{formatRideTime(rideSeconds)}</b><span>Ride time</span></div>
-            <div className="stat-card"><b>{trip.riders}</b><span>Riders</span></div>
+            <div className="stat-card"><b>{summary.totalRiders}</b><span>Riders</span></div>
             <div className="stat-card"><b>{healthScore}%</b><span>Ride health (this ride)</span></div>
           </div>
           <p style={{ marginBottom: 0 }}>Mock summary — distances, times and health are simulated from this ride, not real GPS data.</p>

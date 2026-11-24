@@ -308,6 +308,11 @@ input, select, textarea { font-family: inherit; }
 .btn-cancel { background: var(--card); color: var(--text-dim); border: 1px solid var(--border-strong); }
 
 .leader-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 20px; }
+/* Read-only leader view: a rider opening the Leader Dashboard sees this
+ * instead of the controls — same card style, cyan edge, no fake action. */
+.read-only-note { border-left: 3px solid var(--cyan); }
+.read-only-note b { display: block; font-size: 14px; margin-bottom: 8px; }
+.read-only-note p { margin: 0 0 10px; font-size: 13px; color: var(--text-dim); line-height: 1.6; }
 .health-ring { display: flex; align-items: center; gap: 16px; }
 .health-ring b { font-size: 34px; font-family: 'JetBrains Mono', monospace; }
 .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 12px; }
