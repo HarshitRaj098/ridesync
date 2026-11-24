@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useDispatch } from 'react-redux'
 import { Button, Input, PasswordField, showToast, validateEmail, validatePassword } from '../components/ui.tsx'
 import { login } from '../store/store.ts'
+import { apiErrorMessage, isRealApi, registerApi } from '../services/api.ts'
 
 export default function Register() {
   const navigate = useNavigate()
@@ -13,8 +14,9 @@ export default function Register() {
   const [nameError, setNameError] = useState('')
   const [emailError, setEmailError] = useState('')
   const [passwordError, setPasswordError] = useState('')
+  const [busy, setBusy] = useState(false)
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault()
     const nErr = name.trim().length < 2 ? 'Enter your full name (at least 2 characters).' : ''
     const eErr = validateEmail(email)
@@ -23,7 +25,22 @@ export default function Register() {
     setEmailError(eErr)
     setPasswordError(pErr)
     if (nErr || eErr || pErr) return
-    // Mock auth: no backend yet — registration is stored locally.
+    if (isRealApi) {
+      setBusy(true)
+      try {
+        const { user, token } = await registerApi(name.trim(), email.trim(), password)
+        localStorage.setItem('ridesync-token', token)
+        dispatch(login({ id: user.id, name: user.name, email: user.email, initials: user.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase() }))
+        showToast(`Welcome to RideSync, ${user.name.split(' ')[0]}`)
+        navigate('/home', { replace: true })
+      } catch (err) {
+        setEmailError(apiErrorMessage(err))
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
+    // Mock auth: no backend configured — registration is stored locally.
     const initials = name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()
     dispatch(login({ name: name.trim(), email: email.trim(), initials }))
     showToast(`Welcome to RideSync, ${name.trim().split(' ')[0]}`)
@@ -43,14 +60,18 @@ export default function Register() {
           <Input id="name" label="Full name" placeholder="Harshit Raj" value={name} onChange={(e) => { setName(e.target.value); if (nameError) setNameError('') }} error={nameError} aria-invalid={Boolean(nameError)} />
           <Input id="email" label="Email" type="email" placeholder="you@example.com" value={email} onChange={(e) => { setEmail(e.target.value); if (emailError) setEmailError('') }} error={emailError} aria-invalid={Boolean(emailError)} />
           <PasswordField id="password" label="Password" placeholder="6+ characters" value={password} onChange={(e) => { setPassword(e.target.value); if (passwordError) setPasswordError('') }} error={passwordError} />
-          <Button type="submit">Create Account</Button>
+          <Button type="submit" disabled={busy}>{busy ? 'Creating account…' : 'Create Account'}</Button>
         </form>
         <div className="auth-switch">
           Already have an account? <Link to="/login">Login</Link>
         </div>
       </div>
       <div className="mock-note">
-        <b>Mock registration (no backend yet):</b> your account is stored only in this browser (localStorage).
+        {isRealApi ? (
+          <><b>Real backend connected.</b> Your account is created on the RideSync server (password is hashed, never stored in plain text).</>
+        ) : (
+          <><b>Mock registration (no backend configured):</b> your account is stored only in this browser (localStorage).</>
+        )}
       </div>
     </div>
   )

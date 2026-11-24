@@ -94,6 +94,27 @@ npx vercel          # first run links the project
 npx vercel --prod   # production deploy
 ```
 
+## Real backend
+
+The real backend lives in `../ridesync-server` (Node.js + Express +
+Socket.IO + MongoDB, with an in-memory mode when no `MONGODB_URI` is set).
+See its `README.md` for the full API, socket events, and deploy steps.
+
+To point this web app at it, set in Vercel (or a local `.env`):
+
+```bash
+VITE_API_URL=https://ridesync-server.onrender.com   # your deployed server URL
+VITE_SOCKET_URL=https://ridesync-server.onrender.com
+```
+
+With those set, login/register use the real API (JWT in `localStorage`
+`ridesync-token`), rider stats / trip history / members load from the
+server, the Convoy Dashboard joins the trip's Socket.IO room and sends
+its own GPS, and chat / SOS go through the server. With them unset, the
+app behaves exactly as before — mock data and the simulated socket.
+Demo login against a local server: `demo@ridesync.app` / `ridesync123`,
+Manali convoy code `A1B2C9`.
+
 ## Week 1–6 checklist
 
 | Week | Item | Status |
@@ -131,10 +152,19 @@ npx vercel --prod   # production deploy
 - **Real traffic** — the traffic layer is a fixed simulated overlay, not a live traffic feed.
 - **Real trips** — created/joined trips live only in this browser (Redux + localStorage); nothing is shared with other riders.
 
-## Future backend swap
+## Backend status
 
-- Real API: replace the mock functions in `src/services/api.ts` with Axios
-  calls (see the `TODO` comments).
-- Real sockets: set `VITE_SOCKET_URL` (see `.env.example`) and use
-  `createRealSocket()` from `src/services/socketService.ts`; the simulated
-  timer in `ConvoyDashboard` should then be removed.
+- ✅ **Real backend exists** — `../ridesync-server` (REST + Socket.IO +
+  JWT auth + MongoDB / in-memory mode). Set `VITE_API_URL` /
+  `VITE_SOCKET_URL` (see "Real backend" above) to use it.
+- **Still needs a host + database for production** — the server has not
+  been deployed anywhere and there is no MongoDB Atlas cluster yet; see
+  `ridesync-server/README.md` for Render + Atlas setup.
+- **Real voice server** — push-to-talk still records the local mic only;
+  the server relays WebRTC signalling (`voice:offer` / `voice:answer` /
+  `voice:ice-candidate`) so two browsers can connect peer-to-peer, but
+  there is no TURN/media server yet.
+- **Real push notifications** — browser notifications only work while the
+  app is open; there is no push service or service worker.
+- **Real traffic** — the traffic layer is a fixed simulated overlay, not a
+  live traffic feed.

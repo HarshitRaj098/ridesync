@@ -1,22 +1,23 @@
 /**
- * Simulated Socket.IO layer (mock — no real server).
+ * Socket.IO layer — GPS → Socket → Redux → UI.
  *
- * The real backend (per the Architecture doc) is Node.js + MongoDB with
- * Socket.IO events: location:update, member:join, member:left, sos,
- * trip:update and broadcast. Until that backend exists, this service
- * simulates those events on a timer so the Convoy Dashboard moves live.
- *
- * TODO (real backend): replace `simulatedSocket` with a real client, e.g.
- *   const socket = createRealSocket(import.meta.env.VITE_SOCKET_URL)
- *   socket.on('location:update', handler)
- * and remove the timer simulation below. No API key is needed for the
- * mock; do not add a Google Maps key — maps use Leaflet + OpenStreetMap
- * tiles (CartoDB dark) instead.
+ * Two modes, chosen by environment:
+ * - Real backend: set VITE_SOCKET_URL (e.g. http://localhost:4000) — the
+ *   Convoy Dashboard connects with the JWT from localStorage, joins the
+ *   trip room and receives real location:update / broadcast / sos events.
+ * - Simulated (default, VITE_SOCKET_URL unset): the timer below emits
+ *   location:update every 2.5s so the Convoy Dashboard moves live with
+ *   no server. No API key is needed — maps use Leaflet + OpenStreetMap
+ *   tiles (CartoDB dark) instead of Google Maps.
  */
 import { io, type Socket } from 'socket.io-client'
 import { MEMBERS, type Member } from '../data/mockData.ts'
 
+export const SOCKET_URL = (import.meta.env.VITE_SOCKET_URL as string | undefined)?.trim() || ''
+export const isRealSocket = SOCKET_URL.length > 0
+
 export type SocketEvent = 'location:update' | 'member:join' | 'member:left' | 'sos' | 'trip:update' | 'broadcast'
+export type RealSocketEvent = SocketEvent | 'chat:message' | 'voice:offer' | 'voice:answer' | 'voice:ice-candidate'
 
 type Handler = (payload: unknown) => void
 
@@ -68,9 +69,19 @@ class SimulatedSocket {
 export const simulatedSocket = new SimulatedSocket()
 
 /**
- * Real Socket.IO client factory — provided for the future backend swap.
- * Not connected in this build (no VITE_SOCKET_URL is configured).
+ * Real Socket.IO client — used when VITE_SOCKET_URL is set. Authenticates
+ * with the same JWT as the REST API (localStorage `ridesync-token`).
+ * Returns the shared socket instance; callers attach their own listeners.
  */
-export function createRealSocket(url: string): Socket {
-  return io(url, { transports: ['websocket'], autoConnect: false })
+let realSocket: Socket | null = null
+export function createRealSocket(url = SOCKET_URL): Socket {
+  if (realSocket?.connected || realSocket) return realSocket
+  const token = localStorage.getItem('ridesync-token') ?? ''
+  realSocket = io(url, { transports: ['websocket'], auth: { token }, autoConnect: true })
+  return realSocket
+}
+
+export function disconnectRealSocket(): void {
+  realSocket?.disconnect()
+  realSocket = null
 }

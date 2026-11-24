@@ -1,11 +1,12 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import ConvoyMap from '../components/ConvoyMap.tsx'
 import { EmptyState, MapControls, MemberCard, Modal, SOSButton, VoiceButton, showToast } from '../components/ui.tsx'
 import { BASE_LAT, BASE_LNG, formatRideTime, separatedReason } from '../data/mockData.ts'
 import { browserNotify } from '../services/notify.ts'
-import { simulatedSocket } from '../services/socketService.ts'
+import { isRealApi, postChat, sendSosApi } from '../services/api.ts'
+import { createRealSocket, disconnectRealSocket, isRealSocket, simulatedSocket } from '../services/socketService.ts'
 import { addChat, addNotification, applyLocationUpdate, closeSos, confirmSos, tick } from '../store/store.ts'
 import type { AppDispatch, RootState } from '../store/store.ts'
 import type { Member } from '../data/mockData.ts'
@@ -25,21 +26,70 @@ export default function ConvoyDashboard() {
   const [trafficOn, setTrafficOn] = useState(false)
   const [center, setCenter] = useState<[number, number]>([BASE_LAT, BASE_LNG])
 
-  // Simulated live movement: 1s timer ticks (speed/clock) + simulated
-  // socket location:update events every 2.5s. No real server.
+  const speedRef = useRef(speedKmh)
+  speedRef.current = speedKmh
+
+  // Live movement.
+  // Real backend (VITE_SOCKET_URL set): join the trip room, receive real
+  // location:update / broadcast / sos events, and send our own GPS every
+  // 2.5s. Otherwise the simulated socket moves the mock riders.
   useEffect(() => {
     const timer = setInterval(() => dispatch(tick()), 1000)
-    const off = simulatedSocket.on('location:update', (payload) => {
-      const p = payload as { members: Member[] }
-      if (p?.members) dispatch(applyLocationUpdate(p.members))
-    })
-    simulatedSocket.start()
+    if (!isRealSocket) {
+      const off = simulatedSocket.on('location:update', (payload) => {
+        const p = payload as { members: Member[] }
+        if (p?.members) dispatch(applyLocationUpdate(p.members))
+      })
+      simulatedSocket.start()
+      return () => {
+        clearInterval(timer)
+        off()
+        simulatedSocket.stop()
+      }
+    }
+    const socket = createRealSocket()
+    const tripId = trip.id
+    socket.emit('trip:join', { tripId })
+    const onLocation = (payload: { members?: Member[] }) => {
+      if (payload?.members) dispatch(applyLocationUpdate(payload.members))
+    }
+    const onChat = (msg: { id: string; authorId?: string; author: string; initials: string; text: string }) => {
+      if (msg.authorId && msg.authorId === user?.id) return // our own echo
+      dispatch(addChat({ text: msg.text, author: msg.author, initials: msg.initials, authorId: msg.authorId }))
+    }
+    const onBroadcast = (msg: { author: string; text: string }) => {
+      dispatch(addNotification({ title: `${msg.author} broadcast a message`, detail: msg.text, kind: 'info' }))
+      browserNotify('Convoy broadcast', msg.text)
+    }
+    const onSos = (data: { name: string }) => {
+      dispatch(addNotification({ title: `SOS from ${data.name}`, detail: 'Emergency SOS — live location broadcast to the convoy.', kind: 'danger' }))
+      browserNotify('SOS received', `${data.name} sent an emergency SOS.`)
+    }
+    socket.on('location:update', onLocation)
+    socket.on('chat:message', onChat)
+    socket.on('broadcast', onBroadcast)
+    socket.on('sos', onSos)
+    // Send our own position so other riders (and the server) see us move.
+    const locTimer = setInterval(() => {
+      socket.emit('location:update', {
+        tripId,
+        lat: BASE_LAT + (Math.random() - 0.5) * 0.001,
+        lng: BASE_LNG + (Math.random() - 0.5) * 0.001,
+        speedKmh: speedRef.current,
+      })
+    }, 2500)
     return () => {
       clearInterval(timer)
-      off()
-      simulatedSocket.stop()
+      clearInterval(locTimer)
+      socket.off('location:update', onLocation)
+      socket.off('chat:message', onChat)
+      socket.off('broadcast', onBroadcast)
+      socket.off('sos', onSos)
+      socket.emit('trip:leave', { tripId })
+      disconnectRealSocket()
     }
-  }, [dispatch])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch, trip.id])
 
   const remainingKm = Math.max(0, trip.distanceKm - Math.round(distanceCoveredKm))
   const etaHours = speedKmh > 0 ? remainingKm / speedKmh : 0
@@ -52,13 +102,15 @@ export default function ConvoyDashboard() {
     e.preventDefault()
     const text = chatText.trim()
     if (!text) return
-    dispatch(addChat({ text, author: user?.name ?? 'You', initials: user?.initials ?? 'HR' }))
+    dispatch(addChat({ text, author: user?.name ?? 'You', initials: user?.initials ?? 'HR', authorId: user?.id }))
+    if (isRealApi) postChat(trip.id, text).catch(() => showToast('Message saved locally — server unreachable'))
     dispatch(addNotification({ title: 'Message sent to convoy', detail: text, kind: 'info' }))
     setChatText('')
   }
 
   const sendSos = () => {
     dispatch(confirmSos())
+    if (isRealApi) sendSosApi(trip.id, BASE_LAT, BASE_LNG).catch(() => showToast('SOS saved locally — server unreachable'))
     dispatch(addNotification({ title: 'SOS sent', detail: 'Your live location was broadcast to the convoy leader and emergency contacts.', kind: 'danger' }))
     browserNotify('SOS sent', 'Your live location was broadcast to the convoy leader and emergency contacts.')
     showToast('🚨 SOS broadcast to convoy & contacts')

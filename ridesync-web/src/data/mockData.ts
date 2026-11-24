@@ -25,6 +25,8 @@ export interface ChatMessage {
   author: string
   initials: string
   text: string
+  /** Server user id of the sender (real backend only) — used to ignore our own echo. */
+  authorId?: string
 }
 
 export interface AlertItem {

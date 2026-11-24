@@ -32,6 +32,7 @@ function saveJson(key: string, value: unknown): void {
 
 /* ---------------- Auth ---------------- */
 export interface AuthUser {
+  id?: string
   name: string
   email: string
   initials: string
@@ -61,6 +62,7 @@ const authSlice = createSlice({
       state.user = null
       state.isAuthenticated = false
       localStorage.removeItem('ridesync-user')
+      localStorage.removeItem('ridesync-token')
     },
   },
 })
@@ -133,7 +135,7 @@ const convoySlice = createSlice({
     applyLocationUpdate(state, action: PayloadAction<Member[]>) {
       state.members = action.payload
     },
-    addChat(state, action: PayloadAction<{ text: string; author: string; initials: string }>) {
+    addChat(state, action: PayloadAction<{ text: string; author: string; initials: string; authorId?: string }>) {
       state.chat.push({ id: `c-${Date.now()}`, ...action.payload })
     },
     toggleVoice(state) {
