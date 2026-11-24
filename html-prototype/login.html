@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — RideSync</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+      :root{--primary:#007BFF;--secondary:#00C2FF;--success:#22C55E;--danger:#EF4444;--warning:#F59E0B;--bg:#080B12;--card:#121826;--card-2:#161D2D;--border:rgba(255,255,255,.07);--border-strong:rgba(255,255,255,.14);--text:#F5F7FA;--text-dim:#8B93A7;--text-faint:#5A6178;}
+      *{box-sizing:border-box;}
+      body{margin:0;min-height:100vh;display:flex;justify-content:center;background:radial-gradient(circle at 15% 0%,rgba(0,123,255,.12),transparent 40%),var(--bg);color:var(--text);font-family:'Poppins',sans-serif;}
+      .wrap{width:100%;max-width:430px;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 20px;}
+      .logo{width:72px;height:72px;border-radius:22px;background:linear-gradient(135deg,var(--primary),var(--secondary));display:flex;align-items:center;justify-content:center;box-shadow:0 0 50px rgba(0,194,255,.5);font-size:30px;font-weight:800;color:#fff;}
+      h1{margin:18px 0 4px;font-size:24px;font-weight:800;}
+      .tag{margin:0 0 24px;color:var(--text-dim);font-size:13px;text-align:center;}
+      form{width:100%;padding:22px;border-radius:18px;background:linear-gradient(160deg,var(--card),var(--card-2));border:1px solid var(--border-strong);box-shadow:0 10px 30px rgba(0,0,0,.45);}
+      label{display:block;font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:8px;}
+      input[type="text"],input[type="email"],input[type="password"]{width:100%;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;color:var(--text);font-family:inherit;font-size:14px;outline:none;margin-bottom:16px;}
+      input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(0,123,255,.18);}
+      input::placeholder{color:var(--text-faint);}
+      input[type="submit"]{width:100%;padding:16px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--primary),var(--secondary));color:#fff;font-weight:700;font-size:15px;font-family:inherit;cursor:pointer;box-shadow:0 8px 24px rgba(0,123,255,.35);}
+      .note{font-size:11.5px;color:var(--text-faint);line-height:1.6;text-align:center;margin-top:14px;}
+      a{color:var(--secondary);text-decoration:none;font-weight:600;font-size:13px;}
+      .back{margin-top:18px;}
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="logo">R</div>
+    <h1>Login to RideSync</h1>
+    <p class="tag">Stay Connected. Never Get Lost.</p>
+    <!-- Fixed: was missing the opening <form> tag and closing </form> tag. -->
+    <form action="/login" method="post" onsubmit="mockLogin(event)">
+        <label for="username">Username:</label>
+        <input type="text" id="username" name="username" placeholder="you@example.com" required>
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password" placeholder="••••••••" required>
+        <input type="submit" value="Login">
+    </form>
+    <p class="note">Demo only — no backend. Any username + password signs you in as the demo rider and returns you to the prototype. The form keeps action="/login" method="post" as specified; the submit is intercepted locally so the file works when opened directly in a browser.</p>
+    <p class="back"><a href="index.html">&larr; Back to RideSync prototype</a> &nbsp;·&nbsp; <a href="index.html">Open Home</a></p>
+</div>
+<script>
+  function mockLogin(e){
+    e.preventDefault();
+    alert('Signed in (mock) — welcome back!');
+    window.location.href = 'index.html';
+  }
+</script>
+</body>
+</html>
