@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useDispatch } from 'react-redux'
-import { Button, Input, showToast } from '../components/ui.tsx'
+import { Button, Input, PasswordField, showToast, validateEmail, validatePassword } from '../components/ui.tsx'
 import { login } from '../store/store.ts'
 
 export default function Register() {
@@ -10,16 +10,22 @@ export default function Register() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
+  const [nameError, setNameError] = useState('')
+  const [emailError, setEmailError] = useState('')
+  const [passwordError, setPasswordError] = useState('')
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    if (name.trim().length < 2) return setError('Enter your full name.')
-    if (!email.includes('@')) return setError('Enter a valid email address.')
-    if (password.length < 6) return setError('Password must be at least 6 characters.')
+    const nErr = name.trim().length < 2 ? 'Enter your full name (at least 2 characters).' : ''
+    const eErr = validateEmail(email)
+    const pErr = validatePassword(password)
+    setNameError(nErr)
+    setEmailError(eErr)
+    setPasswordError(pErr)
+    if (nErr || eErr || pErr) return
     // Mock auth: no backend yet — registration is stored locally.
     const initials = name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()
-    dispatch(login({ name: name.trim(), email, initials }))
+    dispatch(login({ name: name.trim(), email: email.trim(), initials }))
     showToast(`Welcome to RideSync, ${name.trim().split(' ')[0]}`)
     navigate('/home', { replace: true })
   }
@@ -33,10 +39,10 @@ export default function Register() {
         </div>
         <h1>Create your account</h1>
         <p>Join convoys, lead rides and keep your whole crew connected.</p>
-        <form onSubmit={submit}>
-          <Input id="name" label="Full name" placeholder="Harshit Raj" value={name} onChange={(e) => setName(e.target.value)} />
-          <Input id="email" label="Email" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <Input id="password" label="Password" type="password" placeholder="6+ characters" value={password} onChange={(e) => setPassword(e.target.value)} error={error} />
+        <form onSubmit={submit} noValidate>
+          <Input id="name" label="Full name" placeholder="Harshit Raj" value={name} onChange={(e) => { setName(e.target.value); if (nameError) setNameError('') }} error={nameError} aria-invalid={Boolean(nameError)} />
+          <Input id="email" label="Email" type="email" placeholder="you@example.com" value={email} onChange={(e) => { setEmail(e.target.value); if (emailError) setEmailError('') }} error={emailError} aria-invalid={Boolean(emailError)} />
+          <PasswordField id="password" label="Password" placeholder="6+ characters" value={password} onChange={(e) => { setPassword(e.target.value); if (passwordError) setPasswordError('') }} error={passwordError} />
           <Button type="submit">Create Account</Button>
         </form>
         <div className="auth-switch">

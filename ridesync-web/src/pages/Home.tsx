@@ -1,14 +1,16 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { useQuery } from '@tanstack/react-query'
-import { AppHeader, BottomNavigation, TripCard, showToast } from '../components/ui.tsx'
+import { AppHeader, BottomNavigation, EmptyState, ErrorState, Loader, TripCard, showToast } from '../components/ui.tsx'
 import { fetchRiderStats } from '../services/api.ts'
 import type { RootState } from '../store/store.ts'
 
 export default function Home() {
   const navigate = useNavigate()
   const trip = useSelector((s: RootState) => s.trip.currentTrip)
-  const { data: stats } = useQuery({ queryKey: ['rider-stats'], queryFn: fetchRiderStats })
+  const trips = useSelector((s: RootState) => s.trip.trips)
+  const pastTrips = trips.filter((t) => t.id !== trip.id)
+  const { data: stats, isLoading, isError, refetch } = useQuery({ queryKey: ['rider-stats'], queryFn: fetchRiderStats })
 
   return (
     <div className="page">
@@ -25,16 +27,16 @@ export default function Home() {
 
       <div className="section-label"><h3>Quick Actions</h3></div>
       <div className="qa-grid">
-        <button className="qa-item" onClick={() => navigate('/trips/create')}>
+        <button className="qa-item" onClick={() => navigate('/trips/create')} aria-label="Create trip">
           <div className="qa-icon">＋</div><span>Create Trip</span>
         </button>
-        <button className="qa-item" onClick={() => navigate('/trips/join')}>
+        <button className="qa-item" onClick={() => navigate('/trips/join')} aria-label="Join trip">
           <div className="qa-icon">👥</div><span>Join Trip</span>
         </button>
-        <button className="qa-item" onClick={() => navigate(`/trips/${trip.id}/convoy`)}>
+        <button className="qa-item" onClick={() => navigate(`/trips/${trip.id}/convoy`)} aria-label="Open my trips">
           <div className="qa-icon">🗺️</div><span>My Trips</span>
         </button>
-        <button className="qa-item" onClick={() => showToast('Finding nearby groups')}>
+        <button className="qa-item" onClick={() => showToast('Finding nearby groups')} aria-label="Find nearby groups">
           <div className="qa-icon">📍</div><span>Nearby</span>
         </button>
       </div>
@@ -45,11 +47,17 @@ export default function Home() {
       </div>
       <TripCard trip={trip} />
 
-      <div className="stats-grid">
-        <div className="stat-card"><b>{stats?.totalRides ?? 47}</b><span>Total Rides</span></div>
-        <div className="stat-card"><b>{(stats?.kmLogged ?? 3140).toLocaleString('en-IN')}</b><span>KM Logged</span></div>
-        <div className="stat-card"><b>{stats?.safetyScore ?? 98}%</b><span>Safety Score</span></div>
-      </div>
+      {isLoading ? (
+        <Loader label="Loading your rider stats…" />
+      ) : isError ? (
+        <ErrorState title="Stats could not load" detail="Your ride stats are mock data served locally — try again." onRetry={() => void refetch()} />
+      ) : (
+        <div className="stats-grid">
+          <div className="stat-card"><b>{stats?.totalRides ?? 47}</b><span>Total Rides</span></div>
+          <div className="stat-card"><b>{(stats?.kmLogged ?? 3140).toLocaleString('en-IN')}</b><span>KM Logged</span></div>
+          <div className="stat-card"><b>{stats?.safetyScore ?? 98}%</b><span>Safety Score</span></div>
+        </div>
+      )}
 
       <div className="section-label"><h3>Live Now</h3></div>
       <div className="list-wrap">
@@ -64,6 +72,25 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      <div className="section-label"><h3>Your Trips</h3></div>
+      {trips.length === 0 ? (
+        <EmptyState
+          icon="🏍️"
+          title="No trips yet"
+          detail="Create your first trip or join one with an invite code."
+          action={<button className="nt-join" onClick={() => navigate('/trips/create')}>Create a trip</button>}
+        />
+      ) : (
+        <div className="list-wrap">
+          {pastTrips.map((t) => (
+            <TripCard key={t.id} trip={t} />
+          ))}
+          {pastTrips.length === 0 ? (
+            <p style={{ color: 'var(--text-dim)', fontSize: 12, padding: '0 4px' }}>No past trips yet — completed trips will show up here.</p>
+          ) : null}
+        </div>
+      )}
       <BottomNavigation />
     </div>
   )

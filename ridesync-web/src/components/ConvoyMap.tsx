@@ -1,7 +1,10 @@
 import { useEffect } from 'react'
 import L from 'leaflet'
-import { MapContainer, Marker, Polyline, TileLayer, useMap } from 'react-leaflet'
-import { BASE_LAT, BASE_LNG, ROUTE_POINTS, type Member } from '../data/mockData.ts'
+import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import { BASE_LAT, BASE_LNG, ROUTE_POINTS, distanceFromLeaderKm, type Member } from '../data/mockData.ts'
+
+/** Simulated congestion on the middle of the route (no live traffic API). */
+const TRAFFIC_SEGMENT: Array<[number, number]> = [ROUTE_POINTS[2], ROUTE_POINTS[3], ROUTE_POINTS[4]]
 
 function InvalidateSize() {
   const map = useMap()
@@ -36,10 +39,12 @@ export default function ConvoyMap({
   members,
   center,
   satOn,
+  trafficOn = false,
 }: {
   members: Member[]
   center: [number, number]
   satOn: boolean
+  trafficOn?: boolean
 }) {
   return (
     <div className="leaflet-map">
@@ -55,10 +60,19 @@ export default function ConvoyMap({
           maxZoom={19}
         />
         <Polyline positions={ROUTE_POINTS} pathOptions={{ color: '#00C2FF', weight: 3, opacity: 0.6, dashArray: '1 10', lineCap: 'round' }} />
+        {trafficOn ? (
+          <Polyline positions={TRAFFIC_SEGMENT} pathOptions={{ color: '#EF4444', weight: 6, opacity: 0.85, lineCap: 'round' }} />
+        ) : null}
         {members.map((m) => (
-          <Marker key={m.id} position={[m.lat, m.lng]} icon={markerIcon(m)} />
+          <Marker key={m.id} position={[m.lat, m.lng]} icon={markerIcon(m)}>
+            <Tooltip direction="top" offset={[0, -10]}>
+              {m.name} · {m.status === 'online' ? `${m.speedKmh} km/h` : m.status}
+              {m.role !== 'Leader' ? ` · ${distanceFromLeaderKm(m, members).toFixed(1)} km from leader` : ' · Leader'}
+            </Tooltip>
+          </Marker>
         ))}
       </MapContainer>
+      {trafficOn ? <div className="traffic-chip">🚦 Traffic — simulated, not live data</div> : null}
     </div>
   )
 }

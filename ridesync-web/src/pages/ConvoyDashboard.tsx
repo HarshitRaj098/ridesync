@@ -2,10 +2,11 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import ConvoyMap from '../components/ConvoyMap.tsx'
-import { MapControls, MemberCard, SOSButton, VoiceButton, showToast } from '../components/ui.tsx'
-import { BASE_LAT, BASE_LNG, formatRideTime } from '../data/mockData.ts'
+import { EmptyState, MapControls, MemberCard, Modal, SOSButton, VoiceButton, showToast } from '../components/ui.tsx'
+import { BASE_LAT, BASE_LNG, formatRideTime, separatedReason } from '../data/mockData.ts'
+import { browserNotify } from '../services/notify.ts'
 import { simulatedSocket } from '../services/socketService.ts'
-import { addChat, applyLocationUpdate, closeSos, confirmSos, tick } from '../store/store.ts'
+import { addChat, addNotification, applyLocationUpdate, closeSos, confirmSos, tick } from '../store/store.ts'
 import type { AppDispatch, RootState } from '../store/store.ts'
 import type { Member } from '../data/mockData.ts'
 
@@ -21,6 +22,7 @@ export default function ConvoyDashboard() {
   const [expanded, setExpanded] = useState(false)
   const [chatText, setChatText] = useState('')
   const [satOn, setSatOn] = useState(false)
+  const [trafficOn, setTrafficOn] = useState(false)
   const [center, setCenter] = useState<[number, number]>([BASE_LAT, BASE_LNG])
 
   // Simulated live movement: 1s timer ticks (speed/clock) + simulated
@@ -45,18 +47,27 @@ export default function ConvoyDashboard() {
   const gaugePct = Math.min(speedKmh / 120, 1)
   const gaugeOffset = 264 - 264 * gaugePct * 0.75
 
+  const separatedCount = members.filter((m) => separatedReason(m, members)).length
   const sendChat = (e: FormEvent) => {
     e.preventDefault()
     const text = chatText.trim()
     if (!text) return
     dispatch(addChat({ text, author: user?.name ?? 'You', initials: user?.initials ?? 'HR' }))
+    dispatch(addNotification({ title: 'Message sent to convoy', detail: text, kind: 'info' }))
     setChatText('')
+  }
+
+  const sendSos = () => {
+    dispatch(confirmSos())
+    dispatch(addNotification({ title: 'SOS sent', detail: 'Your live location was broadcast to the convoy leader and emergency contacts.', kind: 'danger' }))
+    browserNotify('SOS sent', 'Your live location was broadcast to the convoy leader and emergency contacts.')
+    showToast('🚨 SOS broadcast to convoy & contacts')
   }
 
   return (
     <div className="page no-nav dash-screen">
       <div className="map-wrap">
-        <ConvoyMap members={members} center={center} satOn={satOn} />
+        <ConvoyMap members={members} center={center} satOn={satOn} trafficOn={trafficOn} />
 
         <div className="map-overlay-top">
           <button className="circle-btn" onClick={() => navigate('/home')} aria-label="Back home">←</button>
@@ -70,6 +81,11 @@ export default function ConvoyDashboard() {
         <MapControls
           satOn={satOn}
           onToggleSat={() => setSatOn((v) => !v)}
+          trafficOn={trafficOn}
+          onToggleTraffic={() => {
+            setTrafficOn((v) => !v)
+            showToast(trafficOn ? 'Traffic layer off' : 'Traffic layer on (simulated)')
+          }}
           onRecenter={() => {
             setCenter([BASE_LAT, BASE_LNG])
             showToast('Recentered on convoy')
@@ -107,20 +123,27 @@ export default function ConvoyDashboard() {
           <div className="sheet-body">
             {tab === 'members' && (
               <div>
+                {separatedCount > 0 ? (
+                  <p style={{ color: 'var(--warning)', fontSize: 12, margin: '0 0 10px', fontWeight: 600 }}>⚠️ {separatedCount} rider{separatedCount > 1 ? 's' : ''} separated from the convoy</p>
+                ) : null}
                 {members.map((m) => (
-                  <MemberCard key={m.id} member={m} />
+                  <MemberCard key={m.id} member={m} members={members} />
                 ))}
                 <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '10px 0 0' }}>+ 7 more riders in this convoy. {voiceActive ? '🎙️ Push-to-talk is live.' : ''}</p>
               </div>
             )}
             {tab === 'chat' && (
               <div>
-                {chat.map((msg) => (
-                  <div className="chat-msg" key={msg.id}>
-                    <div className="c-avatar">{msg.initials}</div>
-                    <div className="c-body"><b>{msg.author}</b><p>{msg.text}</p></div>
-                  </div>
-                ))}
+                {chat.length === 0 ? (
+                  <EmptyState icon="💬" title="No messages yet" detail="Say hi to the convoy — messages here are mock and stay on this device." />
+                ) : (
+                  chat.map((msg) => (
+                    <div className="chat-msg" key={msg.id}>
+                      <div className="c-avatar">{msg.initials}</div>
+                      <div className="c-body"><b>{msg.author}</b><p>{msg.text}</p></div>
+                    </div>
+                  ))
+                )}
               </div>
             )}
             {tab === 'alerts' && (
@@ -131,12 +154,16 @@ export default function ConvoyDashboard() {
                     <div><b>SOS broadcast sent</b><span>Leader and emergency contacts notified.</span></div>
                   </div>
                 ) : null}
-                {alerts.map((a) => (
-                  <div className="alert-row warn" key={a.id}>
-                    <div className="a-ic">{a.kind === 'danger' ? '🚨' : '⚠️'}</div>
-                    <div><b>{a.title}</b><span>{a.detail}</span></div>
-                  </div>
-                ))}
+                {alerts.length === 0 ? (
+                  <EmptyState icon="✅" title="No alerts" detail="Convoy alerts will appear here when a rider stops, goes offline or an SOS is sent." />
+                ) : (
+                  alerts.map((a) => (
+                    <div className="alert-row warn" key={a.id}>
+                      <div className="a-ic">{a.kind === 'danger' ? '🚨' : '⚠️'}</div>
+                      <div><b>{a.title}</b><span>{a.detail}</span></div>
+                    </div>
+                  ))
+                )}
               </div>
             )}
           </div>
@@ -150,17 +177,19 @@ export default function ConvoyDashboard() {
       </div>
 
       {sosActive ? (
-        <div className="modal-backdrop">
-          <div className="modal-card">
-            <div className="modal-ic">⚠️</div>
-            <h3>Send Emergency SOS?</h3>
-            <p>Your live location and vehicle details will be broadcast to your convoy leader, emergency contacts, and nearby riders immediately.</p>
-            <div className="modal-actions">
+        <Modal
+          title="Send Emergency SOS?"
+          icon="⚠️"
+          onClose={() => dispatch(closeSos())}
+          actions={
+            <>
               <button className="btn-cancel" onClick={() => dispatch(closeSos())}>Cancel</button>
-              <button className="btn-confirm" onClick={() => { dispatch(confirmSos()); showToast('🚨 SOS broadcast to convoy & contacts') }}>Send SOS</button>
-            </div>
-          </div>
-        </div>
+              <button className="btn-confirm" onClick={sendSos}>Send SOS</button>
+            </>
+          }
+        >
+          <p>Your live location and vehicle details will be broadcast to your convoy leader, emergency contacts, and nearby riders immediately.</p>
+        </Modal>
       ) : null}
     </div>
   )

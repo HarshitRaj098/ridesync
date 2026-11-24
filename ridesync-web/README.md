@@ -55,8 +55,10 @@ Stats: 47 total rides, 3,140 km logged, 98% safety score.
 Dark theme by default: bg `#080B12`, card `#121826`, Primary Blue `#007BFF`,
 Cyan `#00C2FF`, Green `#22C55E`, Red `#EF4444`, Warning `#F59E0B`,
 Poppins font. Shared components in `src/components/ui.tsx`: Button, Input,
-TripCard, MemberCard, StatusBadge, BottomNavigation, MapControls, SOSButton,
-VoiceButton, GlassCard, AppHeader, Toast. Map in `src/components/ConvoyMap.tsx`.
+PasswordField, TripCard, MemberCard, StatusBadge, Badge, BottomNavigation,
+MapControls, SOSButton, VoiceButton (real hold-to-talk mic), GlassCard,
+AppHeader, Toast, Modal, Loader, EmptyState, ErrorState, ErrorBoundary.
+Map in `src/components/ConvoyMap.tsx`.
 
 ## Run locally
 
@@ -91,6 +93,43 @@ Or from the CLI (from this folder):
 npx vercel          # first run links the project
 npx vercel --prod   # production deploy
 ```
+
+## Week 1–6 checklist
+
+| Week | Item | Status |
+| --- | --- | --- |
+| 1 | Setup, dark Poppins theme, navigation, reusable components | ✅ Done — Button, Input, PasswordField, Modal, Loader, EmptyState, ErrorState, Badge, Toast, TripCard, MemberCard |
+| 1 | ErrorBoundary + lazy-loaded routes | ✅ Done — all 11 routes lazy-loaded (`dist/assets/*.js` chunks), `ErrorBoundary` in `App.tsx` |
+| 1 | Protected routes | ✅ Done — `/home`, `/trips/*`, `/notifications`, `/profile`, `/settings` redirect to `/login` when signed out |
+| 2 | Auth validation (email format, password ≥ 6 chars, inline per-field errors, show/hide password) | ✅ Done (mock) — validation is real, but sign-in is still local only |
+| 2 | Logout + localStorage session | ✅ Done — logout in Profile and Settings; session persists in `ridesync-user` |
+| 3 | Home trip list (upcoming + past trips) | ✅ Done (mock) — Manali convoy + Bhopal Loop + Indore Run from `PAST_TRIPS` |
+| 3 | Create Trip validation + adds to list | ✅ Done (mock) — name/destination/date validated, new trip appears on Home |
+| 3 | Join Trip code validation (`A1B2C9`, clear error for wrong codes) | ✅ Done (mock) — 6-char check, inline error, matches any known trip code |
+| 3 | Trip Lobby countdown + member list | ✅ Done (mock) — live 24:00 countdown ticking, member list with distances |
+| 4 | Map markers / route / satellite / recenter | ✅ Done — Leaflet + CartoDB dark tiles, Esri satellite toggle |
+| 4 | Traffic layer | ✅ Done (simulated) — red congestion overlay on part of the route, labelled “simulated, not live data” |
+| 4 | Per-member distance from leader | ✅ Done (mock GPS) — Haversine distance on MemberCard, map tooltips and Leader view |
+| 4 | Separated-rider detection | ✅ Done (mock GPS) — offline / stopped / > 2 km from leader flagged “Separated” |
+| 5 | Leader health score, online / stopped / offline / separated | ✅ Done (mock) |
+| 5 | Broadcast → Convoy chat + notification | ✅ Done (mock) — broadcast appears in chat, in-app notification, and optional browser notification |
+| 5 | Regroup → stopped riders ride again + notification | ✅ Done (mock) |
+| 5 | End Trip → trip summary (distance, time, riders, safety) | ✅ Done (mock) — summary modal, then back home |
+| 6 | Voice: real push-to-talk (hold), mic-level meter, speaking indicator | ✅ Done (local mic only) — `getUserMedia` + `MediaRecorder` + live meter; audio is captured locally and discarded, nobody else hears it |
+| 6 | Voice: graceful fallback if mic denied / unavailable | ✅ Done — inline fallback message explains how to allow the mic |
+| 6 | Notifications: All / Unread / Alerts filters, new notification on SOS / regroup / broadcast / chat | ✅ Done (mock) — read state persisted in localStorage |
+| 6 | Browser Notification permission (optional) | ✅ Done — “Enable” button on Notifications and Settings; fires only while the app is open, no push server |
+| 6 | Settings toggles persist | ✅ Done — saved in `ridesync-settings` localStorage |
+| 6 | Loading / empty / error states, aria labels on icon buttons | ✅ Done — Loader / EmptyState / ErrorState on Home, Profile, Convoy, Notifications; aria-labels on map controls, voice, SOS, filters |
+
+### Still needs a real backend (not done — do not mistake the above for live)
+
+- **Real auth server** — login/register are mock; any valid-looking email signs in locally.
+- **Real Socket.IO / GPS** — movement, chat, SOS, regroup and broadcasts are simulated timers in the browser; no server, no real rider positions.
+- **Real voice server** — push-to-talk records the local mic only; there is no voice channel, so other riders cannot hear it.
+- **Real push notifications** — browser notifications only work while the app is open; there is no push service or service worker.
+- **Real traffic** — the traffic layer is a fixed simulated overlay, not a live traffic feed.
+- **Real trips** — created/joined trips live only in this browser (Redux + localStorage); nothing is shared with other riders.
 
 ## Future backend swap
 

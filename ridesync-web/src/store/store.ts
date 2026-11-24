@@ -5,12 +5,30 @@ import {
   CURRENT_TRIP,
   MEMBERS,
   NOTIFICATIONS,
+  PAST_TRIPS,
   RIDER_STATS,
   type AlertItem,
   type ChatMessage,
   type Member,
   type Trip,
 } from '../data/mockData.ts'
+
+/* Persisted slices survive a reload via localStorage (mock only — no backend). */
+function loadJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? (JSON.parse(raw) as T) : fallback
+  } catch {
+    return fallback
+  }
+}
+function saveJson(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // Storage full / private mode — the app keeps working in-memory.
+  }
+}
 
 /* ---------------- Auth ---------------- */
 export interface AuthUser {
@@ -57,7 +75,7 @@ const tripSlice = createSlice({
   name: 'trip',
   initialState: {
     currentTrip: CURRENT_TRIP,
-    trips: [CURRENT_TRIP],
+    trips: [CURRENT_TRIP, ...PAST_TRIPS],
     joinedTripIds: [CURRENT_TRIP.id],
   } as TripState,
   reducers: {
@@ -121,6 +139,9 @@ const convoySlice = createSlice({
     toggleVoice(state) {
       state.voiceActive = !state.voiceActive
     },
+    setVoiceActive(state, action: PayloadAction<boolean>) {
+      state.voiceActive = action.payload
+    },
     openSos(state) {
       state.sosActive = true
     },
@@ -142,24 +163,47 @@ const convoySlice = createSlice({
 })
 
 /* ---------------- Notifications ---------------- */
+export type NotificationKind = 'warn' | 'danger' | 'info' | 'ok'
+export interface NotificationItem {
+  id: string
+  title: string
+  detail: string
+  time: string
+  kind: NotificationKind
+  unread: boolean
+}
 interface NotificationsState {
-  items: typeof NOTIFICATIONS
+  items: NotificationItem[]
   unreadCount: number
 }
+const storedNotifications = loadJson<NotificationItem[]>('ridesync-notifications', NOTIFICATIONS)
 const notificationsSlice = createSlice({
   name: 'notifications',
   initialState: {
-    items: NOTIFICATIONS,
-    unreadCount: NOTIFICATIONS.filter((n) => n.unread).length,
+    items: storedNotifications,
+    unreadCount: storedNotifications.filter((n) => n.unread).length,
   } as NotificationsState,
   reducers: {
+    /** A new in-app notification (SOS, regroup, broadcast, new chat). Persisted. */
+    addNotification(state, action: PayloadAction<{ title: string; detail: string; kind: NotificationKind }>) {
+      state.items.unshift({
+        id: `n-${Date.now()}`,
+        time: 'Just now',
+        unread: true,
+        ...action.payload,
+      })
+      state.unreadCount = state.items.filter((n) => n.unread).length
+      saveJson('ridesync-notifications', state.items)
+    },
     markAllRead(state) {
       state.items = state.items.map((n) => ({ ...n, unread: false }))
       state.unreadCount = 0
+      saveJson('ridesync-notifications', state.items)
     },
     markRead(state, action: PayloadAction<string>) {
       state.items = state.items.map((n) => (n.id === action.payload ? { ...n, unread: false } : n))
       state.unreadCount = state.items.filter((n) => n.unread).length
+      saveJson('ridesync-notifications', state.items)
     },
   },
 })
@@ -171,20 +215,27 @@ interface SettingsState {
   locationSharing: boolean
   voiceEnabled: boolean
 }
+const storedSettings = loadJson<SettingsState>('ridesync-settings', {
+  darkMode: true,
+  notificationsEnabled: true,
+  locationSharing: true,
+  voiceEnabled: true,
+})
 const settingsSlice = createSlice({
   name: 'settings',
-  initialState: { darkMode: true, notificationsEnabled: true, locationSharing: true, voiceEnabled: true } as SettingsState,
+  initialState: storedSettings,
   reducers: {
     toggleSetting(state, action: PayloadAction<keyof SettingsState>) {
       state[action.payload] = !state[action.payload]
+      saveJson('ridesync-settings', state)
     },
   },
 })
 
 export const { login, logout } = authSlice.actions
 export const { createTrip, joinTrip, selectTrip } = tripSlice.actions
-export const { tick, applyLocationUpdate, addChat, toggleVoice, openSos, closeSos, confirmSos, regroup } = convoySlice.actions
-export const { markAllRead, markRead } = notificationsSlice.actions
+export const { tick, applyLocationUpdate, addChat, toggleVoice, setVoiceActive, openSos, closeSos, confirmSos, regroup } = convoySlice.actions
+export const { addNotification, markAllRead, markRead } = notificationsSlice.actions
 export const { toggleSetting } = settingsSlice.actions
 
 export const store = configureStore({

@@ -17,10 +17,19 @@ export default function CreateTrip() {
   const [type, setType] = useState<'Public' | 'Private'>('Public')
   const [riders, setRiders] = useState(12)
   const [leader, setLeader] = useState('You (Trip Creator)')
+  const [nameError, setNameError] = useState('')
+  const [destError, setDestError] = useState('')
+  const [dateError, setDateError] = useState('')
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    if (!name.trim()) return showToast('Give your trip a name')
+    const nErr = name.trim().length < 3 ? 'Give your trip a name (at least 3 characters).' : ''
+    const dErr = destination.trim().length < 2 ? 'Enter a destination.' : ''
+    const dtErr = !date || !time ? 'Pick a date and a start time.' : ''
+    setNameError(nErr)
+    setDestError(dErr)
+    setDateError(dtErr)
+    if (nErr || dErr || dtErr) return
     const trip: Trip = {
       id: `trip-${Date.now()}`,
       name: name.trim(),
@@ -44,18 +53,19 @@ export default function CreateTrip() {
     <div className="page">
       <AppHeader title="Create Trip" showBack />
       <form className="form-wrap" onSubmit={submit}>
-        <Input id="trip-name" label="Trip Name" placeholder="e.g. Manali Mountain Convoy" value={name} onChange={(e) => setName(e.target.value)} />
-        <Input id="destination" label="Destination" placeholder="Search destination…" value={destination} onChange={(e) => setDestination(e.target.value)} />
+        <Input id="trip-name" label="Trip Name" placeholder="e.g. Manali Mountain Convoy" value={name} onChange={(e) => { setName(e.target.value); if (nameError) setNameError('') }} error={nameError} aria-invalid={Boolean(nameError)} />
+        <Input id="destination" label="Destination" placeholder="Search destination…" value={destination} onChange={(e) => { setDestination(e.target.value); if (destError) setDestError('') }} error={destError} aria-invalid={Boolean(destError)} />
         <div className="field row2">
           <div>
             <label htmlFor="date">Date</label>
-            <input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <input id="date" type="date" value={date} onChange={(e) => { setDate(e.target.value); if (dateError) setDateError('') }} aria-invalid={Boolean(dateError)} />
           </div>
           <div>
             <label htmlFor="time">Start Time</label>
-            <input id="time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+            <input id="time" type="time" value={time} onChange={(e) => { setTime(e.target.value); if (dateError) setDateError('') }} aria-invalid={Boolean(dateError)} />
           </div>
         </div>
+        {dateError ? <span className="error" role="alert">{dateError}</span> : null}
         <div className="field">
           <label>Trip Type</label>
           <div className="seg-group">

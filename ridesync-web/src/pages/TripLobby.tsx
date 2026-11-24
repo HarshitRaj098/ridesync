@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { AppHeader, BottomNavigation, Button, MemberCard, StatusBadge, TripCard, showToast } from '../components/ui.tsx'
@@ -10,12 +11,24 @@ export default function TripLobby() {
   const members = useSelector((s: RootState) => s.convoy.members)
   const joined = useSelector((s: RootState) => s.trip.joinedTripIds.includes(trip.id))
   const tripId = id ?? trip.id
+  // Live countdown to departure (simulated: starts at 24 min, ticks down).
+  const [secondsLeft, setSecondsLeft] = useState(24 * 60)
+  useEffect(() => {
+    const timer = setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000)
+    return () => clearInterval(timer)
+  }, [])
+  const countdown = `${String(Math.floor(secondsLeft / 60)).padStart(2, '0')}:${String(secondsLeft % 60).padStart(2, '0')}`
 
   return (
     <div className="page">
       <AppHeader title="Trip Lobby" showBack />
       <div style={{ paddingTop: 16 }}>
         <TripCard trip={trip} onOpen={() => showToast('You are in the lobby')} />
+      </div>
+      <div className="countdown-card" role="timer" aria-label={`Trip departs in ${countdown}`}>
+        <span>⏱️ Departs in</span>
+        <b>{countdown}</b>
+        <span className="countdown-sub">{trip.date} · {trip.startTime} · {trip.from} → {trip.to}</span>
       </div>
       <div className="section-label">
         <h3>Riders · {trip.riders}</h3>
@@ -24,7 +37,7 @@ export default function TripLobby() {
       <div className="list-wrap">
         <div className="list-card">
           {members.map((m) => (
-            <MemberCard key={m.id} member={m} />
+            <MemberCard key={m.id} member={m} members={members} />
           ))}
           <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '10px 0 0' }}>+ 7 more riders confirmed for this convoy.</p>
         </div>

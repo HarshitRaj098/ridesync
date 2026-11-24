@@ -1,25 +1,49 @@
 import { useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { AppHeader, BottomNavigation, Button, MemberCard, showToast } from '../components/ui.tsx'
-import { SPEED_HISTORY } from '../data/mockData.ts'
-import { regroup } from '../store/store.ts'
+import { AppHeader, BottomNavigation, Button, MemberCard, Modal, showToast } from '../components/ui.tsx'
+import { SPEED_HISTORY, formatRideTime, separatedReason } from '../data/mockData.ts'
+import { browserNotify } from '../services/notify.ts'
+import { addChat, addNotification, regroup } from '../store/store.ts'
 import type { RootState } from '../store/store.ts'
 
 export default function LeaderDashboard() {
   const navigate = useNavigate()
   const dispatch = useDispatch()
   const trip = useSelector((s: RootState) => s.trip.currentTrip)
-  const { members, alerts, speedKmh } = useSelector((s: RootState) => s.convoy)
+  const { members, alerts, speedKmh, rideSeconds, distanceCoveredKm } = useSelector((s: RootState) => s.convoy)
+  const user = useSelector((s: RootState) => s.auth.user)
   const [broadcast, setBroadcast] = useState('')
+  const [broadcastError, setBroadcastError] = useState('')
+  const [showSummary, setShowSummary] = useState(false)
 
   const online = members.filter((m) => m.status === 'online').length
   const stopped = members.filter((m) => m.status === 'stopped').length
   const offline = members.filter((m) => m.status === 'offline').length
-  const separated = stopped + offline
+  const separated = members.filter((m) => separatedReason(m, members)).length
   // Ride health: mock score derived from live member states (98% safety baseline).
   const healthScore = Math.max(60, 98 - separated * 3)
   const maxSpeed = Math.max(...SPEED_HISTORY.map((s) => s.value), speedKmh)
+
+  const sendBroadcast = () => {
+    const text = broadcast.trim()
+    if (!text) { setBroadcastError('Type a broadcast message first.'); return }
+    if (text.length > 200) { setBroadcastError('Keep broadcasts under 200 characters.'); return }
+    const author = user ? `${user.name} (Leader)` : 'Rohit (Leader)'
+    dispatch(addChat({ text, author, initials: user?.initials ?? 'RV' }))
+    dispatch(addNotification({ title: 'Broadcast sent', detail: `“${text}”`, kind: 'info' }))
+    browserNotify('Broadcast sent', text)
+    showToast('Broadcast sent to all riders')
+    setBroadcast('')
+    setBroadcastError('')
+  }
+
+  const doRegroup = () => {
+    dispatch(regroup())
+    dispatch(addNotification({ title: 'Regroup requested', detail: 'Leader asked all riders to regroup at the next stop.', kind: 'info' }))
+    browserNotify('Regroup requested', 'Leader asked all riders to regroup at the next stop.')
+    showToast('Regroup request sent to all riders')
+  }
 
   return (
     <div className="page">
@@ -56,20 +80,30 @@ export default function LeaderDashboard() {
       <div className="list-wrap">
         <div className="list-card">
           {members.map((m) => (
-            <MemberCard key={m.id} member={m} />
+            <MemberCard key={m.id} member={m} members={members} />
           ))}
         </div>
       </div>
 
       <div className="section-label"><h3>Leader Actions</h3></div>
       <div className="form-wrap" style={{ paddingTop: 0 }}>
-        <Button onClick={() => { dispatch(regroup()); showToast('Regroup request sent to all riders') }}>🔄 Regroup Convoy</Button>
+        <Button onClick={doRegroup}>🔄 Regroup Convoy</Button>
         <div className="field" style={{ marginTop: 14 }}>
           <label htmlFor="broadcast">Broadcast message</label>
-          <input id="broadcast" type="text" placeholder="Message all riders…" value={broadcast} onChange={(e) => setBroadcast(e.target.value)} />
+          <input
+            id="broadcast"
+            type="text"
+            placeholder="Message all riders…"
+            maxLength={200}
+            value={broadcast}
+            onChange={(e) => { setBroadcast(e.target.value); if (broadcastError) setBroadcastError('') }}
+            aria-invalid={Boolean(broadcastError)}
+          />
+          {broadcastError ? <span className="error" role="alert">{broadcastError}</span> : null}
+          <span style={{ color: 'var(--text-faint)', fontSize: 11 }}>Broadcasts also appear in Convoy chat and Notifications.</span>
         </div>
-        <Button variant="ghost" onClick={() => { if (broadcast.trim()) { showToast(`Broadcast sent: “${broadcast.trim()}”`); setBroadcast('') } else showToast('Type a broadcast message first') }}>📣 Send Broadcast</Button>
-        <Button variant="danger" onClick={() => { showToast('Trip ended (mock) — ride summary saved'); navigate('/home') }}>End Trip</Button>
+        <Button variant="ghost" onClick={sendBroadcast}>📣 Send Broadcast</Button>
+        <Button variant="danger" onClick={() => setShowSummary(true)}>End Trip</Button>
       </div>
 
       <div className="section-label"><h3>Analytics — Speed (km/h)</h3></div>
@@ -85,6 +119,24 @@ export default function LeaderDashboard() {
           <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '10px 0 0' }}>Alerts this ride: {alerts.length} · Safety score 98% · 3,140 km logged overall.</p>
         </div>
       </div>
+
+      {showSummary ? (
+        <Modal
+          title="Trip summary"
+          icon="🏁"
+          onClose={() => setShowSummary(false)}
+          actions={<button className="btn-confirm" onClick={() => navigate('/home')}>Done — back home</button>}
+        >
+          <p>{trip.name} · {trip.from} → {trip.to}</p>
+          <div className="summary-grid">
+            <div className="stat-card"><b>{Math.round(distanceCoveredKm)} km</b><span>Distance ridden</span></div>
+            <div className="stat-card"><b>{formatRideTime(rideSeconds)}</b><span>Ride time</span></div>
+            <div className="stat-card"><b>{trip.riders}</b><span>Riders</span></div>
+            <div className="stat-card"><b>98%</b><span>Safety score</span></div>
+          </div>
+          <p style={{ marginBottom: 0 }}>Mock summary — distances and times are simulated, not real GPS data.</p>
+        </Modal>
+      ) : null}
       <BottomNavigation />
     </div>
   )

@@ -3,35 +3,61 @@ import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { AppHeader, BottomNavigation, Button, Input, showToast } from '../components/ui.tsx'
 import { NEARBY_TRIPS, CURRENT_TRIP } from '../data/mockData.ts'
-import { joinTrip } from '../store/store.ts'
+import { joinTrip, selectTrip } from '../store/store.ts'
 import type { RootState } from '../store/store.ts'
 
 export default function JoinTrip() {
   const navigate = useNavigate()
   const dispatch = useDispatch()
   const trip = useSelector((s: RootState) => s.trip.currentTrip)
+  const trips = useSelector((s: RootState) => s.trip.trips)
   const [code, setCode] = useState('')
   const [link, setLink] = useState('')
+  const [codeError, setCodeError] = useState('')
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
     const entered = code.trim().toUpperCase()
-    if (entered && entered !== CURRENT_TRIP.code) {
-      showToast('Trip code not found (mock) — try A1B2C9')
+    if (!entered) {
+      // Blank code joins the current (Manali) convoy, as before.
+      dispatch(joinTrip(CURRENT_TRIP.id))
+      showToast('Joined trip lobby')
+      navigate(`/trips/${CURRENT_TRIP.id}/lobby`)
       return
     }
-    dispatch(joinTrip(CURRENT_TRIP.id))
-    showToast('Joined trip lobby')
-    navigate(`/trips/${CURRENT_TRIP.id}/lobby`)
+    if (entered.length !== 6) {
+      setCodeError('Trip codes are 6 characters — e.g. A1B2C9.')
+      return
+    }
+    const match = trips.find((t) => t.code.toUpperCase() === entered)
+    if (!match) {
+      setCodeError(`No trip found with code “${entered}”. Check the code and try again — the Manali convoy code is A1B2C9.`)
+      return
+    }
+    dispatch(joinTrip(match.id))
+    dispatch(selectTrip(match.id))
+    showToast(`Joined ${match.name}`)
+    navigate(`/trips/${match.id}/lobby`)
   }
 
   return (
     <div className="page">
       <AppHeader title="Join Trip" showBack />
-      <form className="form-wrap" onSubmit={submit}>
+      <form className="form-wrap" onSubmit={submit} noValidate>
         <div className="field">
           <label htmlFor="code">Enter Trip Code</label>
-          <input id="code" type="text" maxLength={6} placeholder="A1B2C9" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} style={{ textAlign: 'center', fontFamily: 'JetBrains Mono, monospace', fontSize: 20, letterSpacing: 3, textTransform: 'uppercase' }} />
+          <input
+            id="code"
+            type="text"
+            maxLength={6}
+            placeholder="A1B2C9"
+            value={code}
+            onChange={(e) => { setCode(e.target.value.toUpperCase()); if (codeError) setCodeError('') }}
+            aria-invalid={Boolean(codeError)}
+            aria-describedby={codeError ? 'code-error' : undefined}
+            style={{ textAlign: 'center', fontFamily: 'JetBrains Mono, monospace', fontSize: 20, letterSpacing: 3, textTransform: 'uppercase' }}
+          />
+          {codeError ? <span className="error" id="code-error" role="alert">{codeError}</span> : null}
         </div>
         <Button type="button" variant="ghost" onClick={() => showToast('Opening camera scanner (mock)')}>📷 Scan QR Code</Button>
         <div className="divider-or">or paste link</div>

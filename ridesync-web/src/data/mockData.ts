@@ -89,6 +89,74 @@ export const ALERTS: AlertItem[] = [
 
 export const RIDER_STATS = { totalRides: 47, kmLogged: 3140, safetyScore: 98 }
 
+/** Past (completed) mock trips, shown on Home below the upcoming trip. */
+export const PAST_TRIPS: Trip[] = [
+  {
+    id: 'bhopal-loop',
+    name: 'Bhopal Bikers Sunday Loop',
+    from: 'Bhopal',
+    to: 'Bhopal',
+    distanceKm: 86,
+    riders: 8,
+    vehicles: 2,
+    type: 'Public',
+    date: '2026-07-19',
+    startTime: '06:30',
+    startsIn: 'Completed',
+    code: 'LOOP86',
+  },
+  {
+    id: 'indore-run',
+    name: 'Highway Cruisers – Indore Run',
+    from: 'Bhopal',
+    to: 'Indore',
+    distanceKm: 198,
+    riders: 15,
+    vehicles: 4,
+    type: 'Public',
+    date: '2026-07-12',
+    startTime: '05:30',
+    startsIn: 'Completed',
+    code: 'IND198',
+  },
+]
+
+/** Haversine distance between two lat/lng points, in km. */
+export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371
+  const dLat = ((lat2 - lat1) * Math.PI) / 180
+  const dLng = ((lng2 - lng1) * Math.PI) / 180
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) * Math.sin(dLng / 2)
+  return 2 * R * Math.asin(Math.sqrt(a))
+}
+
+export function leaderOf(members: Member[]): Member | undefined {
+  return members.find((m) => m.role === 'Leader') ?? members[0]
+}
+
+/** Distance of a member from the convoy leader, in km (0 for the leader). */
+export function distanceFromLeaderKm(member: Member, members: Member[]): number {
+  const leader = leaderOf(members)
+  if (!leader || member.id === leader.id) return 0
+  return haversineKm(member.lat, member.lng, leader.lat, leader.lng)
+}
+
+/**
+ * Why a rider counts as separated from the convoy, or null if they are
+ * riding with the group. A rider is separated when offline, stopped, or
+ * more than 2 km from the leader (simulated GPS positions).
+ */
+export function separatedReason(member: Member, members: Member[]): string | null {
+  if (member.role === 'Leader') return null
+  if (member.status === 'offline') return 'Offline — last known position shown'
+  if (member.status === 'stopped') return 'Stopped — not moving with the convoy'
+  const d = distanceFromLeaderKm(member, members)
+  if (d > 2) return `Separated — ${d.toFixed(1)} km from the leader`
+  return null
+}
+
 export const NEARBY_TRIPS = [
   { id: 'nearby-1', name: 'Bhopal Bikers Sunday Loop', detail: '1.2 km away · 8 riders' },
   { id: 'nearby-2', name: 'Highway Cruisers – Indore Run', detail: '4.6 km away · 15 riders' },
