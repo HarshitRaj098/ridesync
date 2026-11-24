@@ -52,11 +52,14 @@ export default function Home() {
       ) : isError ? (
         <ErrorState title="Stats could not load" detail="Your ride stats are mock data served locally — try again." onRetry={() => void refetch()} />
       ) : (
-        <div className="stats-grid">
-          <div className="stat-card"><b>{stats?.totalRides ?? 47}</b><span>Total Rides</span></div>
-          <div className="stat-card"><b>{(stats?.kmLogged ?? 3140).toLocaleString('en-IN')}</b><span>KM Logged</span></div>
-          <div className="stat-card"><b>{stats?.safetyScore ?? 98}%</b><span>Safety Score</span></div>
-        </div>
+        <>
+          <div className="stats-grid">
+            <div className="stat-card"><b>{stats?.totalRides ?? 47}</b><span>Total Rides</span></div>
+            <div className="stat-card"><b>{(stats?.kmLogged ?? 3140).toLocaleString('en-IN')}</b><span>KM Logged</span></div>
+            <div className="stat-card"><b>{stats?.safetyScore ?? 98}%</b><span>Safety Score</span></div>
+          </div>
+          <p style={{ color: 'var(--text-faint)', fontSize: 11, padding: '8px 20px 0', margin: 0 }}>Demo stats — sample totals, not a real account. Ending a ride in this demo adds to the totals above.</p>
+        </>
       )}
 
       <div className="section-label"><h3>Live Now</h3></div>
@@ -66,7 +69,7 @@ export default function Home() {
             <div className="notif-ic">🗺️</div>
             <div style={{ flex: 1 }}>
               <b>{trip.name} is live</b>
-              <span>12 riders on the road · Bhopal → Manali · 612 km</span>
+              <span>{trip.riders} riders on the road · {trip.from} → {trip.to}{trip.distanceKm > 0 ? ` · ${trip.distanceKm} km` : ''}</span>
             </div>
             <button className="nt-join" onClick={() => navigate(`/trips/${trip.id}/convoy`)}>Open</button>
           </div>

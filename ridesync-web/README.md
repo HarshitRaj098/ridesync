@@ -156,13 +156,39 @@ One shared join logic in `src/services/join.ts` (`attemptJoin` / `parseInviteLin
 
 Still mock: requests stay "pending" — leader approval and capacity checks need the real backend (Deploy + the request/approve endpoint).
 
+## Map + fake data + "coming soon" — fast fix pass (mock layer, 2026-11-25)
+
+### The map issue — found and fixed
+Two writers fought over rider positions: the 1s store tick random-walked members, and the simulated socket rebuilt them from the seed every 2.5s and overwrote the tick — so markers shivered in place around Bhopal and the convoy never travelled, while distance and ETA kept changing. Fixed with one movement model:
+- Riders now travel the Bhopal → Manali demo corridor (`ROUTE_POINTS` in `src/data/mockData.ts`, 15 waypoints) driven by `distanceCoveredKm` — position = `memberRoutePosition()` along the route. The map is labelled "Demo map · simulated positions, not live GPS".
+- The map follows the leader (pans when the leader moves away from the view centre). Dragging/zooming by hand pauses follow; recenter / compass resume it.
+- Compass and recenter now jump to the leader's **live** position (they used to jump to the fixed Bhopal start point). The simulated socket no longer sends member positions at all (heartbeat only).
+- The traffic overlay now sits on the stretch the convoy is actually riding (route points nearest the leader), not a fixed segment.
+- The map re-validates its size on window resize / orientation change, so it no longer renders half-grey on phones when the browser chrome collapses.
+- Still Leaflet + CartoDB/OpenStreetMap tiles, no Google Maps key. Camera not verified on a real device; no visible +/− zoom buttons (Leaflet zoomControl off).
+
+### Fake data — made honest
+- **Stats (Home / Profile / Leader summary):** 47 / 3,140 are still the demo seed, but they are now labelled "Demo stats" on both screens, and ending a trip adds to them (`lifetime` slice in the store, persisted in `ridesync-lifetime`, read by `fetchRiderStats`). The end-trip summary no longer always says 98% — it shows the ride's live health score.
+- **Leader health:** the text now matches the number (healthy / "N riders separated — mostly healthy" / "needs attention", coloured accordingly).
+- **Average speed:** a real average of the speeds recorded this ride (`speedSamples` in the store), not the current speed.
+- **SOS:** never claims contacts were notified. The modal, toast, notification and alerts row all say the SOS is shown to the convoy on this device (demo) and no contacts were messaged.
+- **Notifications:** every notification carries its source (chat / broadcast / SOS / regroup / system / join request), shown next to its time.
+- **Settings toggles:** the notifications toggle now actually stops new in-app notifications (and browser pop-ups already did); the location-sharing toggle stops GPS being sent and shows a "location sharing off" chip on the map; the dark-theme toggle is gone — the app is dark-only and says so instead of a switch that changed nothing.
+- **Create Trip:** a real From field, and distance comes from a small estimate table (Manali 612, Indore 198, …). Unknown destinations show "distance not estimated yet" instead of a made-up 612 km.
+- **Member notes:** online riders show their live speed; distance from the leader is computed live (was a frozen note). "+7 more riders" is computed from the trip's rider count.
+- **Bottom nav Trips** opens the current trip's convoy, not a hardcoded Manali URL. **Home "Live Now"** uses the trip's real fields.
+
+### "Coming soon" — both found, both made real
+- **Header ☰ menu** ("Menu coming soon" toast): now a real dropdown menu with links to Home, My Trip map, Trip Lobby, Notifications, Profile and Settings.
+- **Settings → Emergency contacts Edit** ("coming soon" toast): now a real editor — add / edit / delete contacts, stored in Redux + localStorage (`ridesync-emergency-contacts`). Contacts start empty on purpose (no fake names/numbers); the SOS modal lists the saved contacts so the rider can see who SOS would reach, and says plainly they are listed, not messaged, in the demo.
+
 ### Still needs a real backend (not done — do not mistake the above for live)
 
 - **Real auth server** — login/register are mock; any valid-looking email signs in locally.
 - **Real Socket.IO / GPS** — movement, chat, SOS, regroup and broadcasts are simulated timers in the browser; no server, no real rider positions.
 - **Real voice server** — push-to-talk records the local mic only; there is no voice channel, so other riders cannot hear it.
 - **Real push notifications** — browser notifications only work while the app is open; there is no push service or service worker.
-- **Real traffic** — the traffic layer is a fixed simulated overlay, not a live traffic feed.
+- **Real traffic** — the traffic layer is a simulated overlay on the stretch being ridden, not a live traffic feed.
 - **Real trips** — created/joined trips live only in this browser (Redux + localStorage); nothing is shared with other riders.
 
 ## Backend status
@@ -179,5 +205,5 @@ Still mock: requests stay "pending" — leader approval and capacity checks need
   there is no TURN/media server yet.
 - **Real push notifications** — browser notifications only work while the
   app is open; there is no push service or service worker.
-- **Real traffic** — the traffic layer is a fixed simulated overlay, not a
-  live traffic feed.
+- **Real traffic** — the traffic layer is a simulated overlay on the stretch being
+  ridden, not a live traffic feed.

@@ -35,7 +35,7 @@ export default function TripLobby() {
     <div className="page">
       <AppHeader title="Trip Lobby" showBack />
       <div style={{ paddingTop: 16 }}>
-        <TripCard trip={trip} onOpen={() => showToast('You are in the lobby')} />
+        <TripCard trip={trip} />
       </div>
       <div className="countdown-card" role="timer" aria-label={`Trip departs in ${countdown}`}>
         <span>⏱️ Departs in</span>
@@ -96,14 +96,14 @@ export default function TripLobby() {
           {members.map((m) => (
             <MemberCard key={m.id} member={m} members={members} />
           ))}
-          <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '10px 0 0' }}>+ 7 more riders confirmed for this convoy.</p>
+          <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '10px 0 0' }}>+ {Math.max(0, trip.riders - members.length)} more riders confirmed for this convoy.</p>
         </div>
       </div>
       <div className="section-label"><h3>Trip Details</h3></div>
       <div className="list-wrap">
         <div className="list-card">
           <div className="setting-row"><div><b>Departure</b><span>{trip.date} at {trip.startTime}</span></div><StatusBadge>{trip.startsIn}</StatusBadge></div>
-          <div className="setting-row"><div><b>Route</b><span>{trip.from} → {trip.to} · {trip.distanceKm} km</span></div></div>
+          <div className="setting-row"><div><b>Route</b><span>{trip.from} → {trip.to}{trip.distanceKm > 0 ? ` · ${trip.distanceKm} km` : ' · distance not estimated yet'}</span></div></div>
           <div className="setting-row"><div><b>Invite code</b><span>Share with riders to join</span></div><b style={{ fontFamily: 'JetBrains Mono, monospace', color: 'var(--cyan)' }}>{trip.code}</b></div>
           <div className="setting-row"><div><b>Joined</b><span>Your seat is confirmed</span></div><span>{joined ? 'Yes ✓' : 'No'}</span></div>
         </div>

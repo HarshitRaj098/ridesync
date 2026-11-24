@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { AppHeader, BottomNavigation, Button, Input, QrCode, showToast } from '../components/ui.tsx'
 import { buildInviteLink, copyText, generateTripCode } from '../services/join.ts'
 import { createTrip } from '../store/store.ts'
+import { estimateDistanceKm } from '../data/mockData.ts'
 import type { RootState } from '../store/store.ts'
 import type { Trip } from '../data/mockData.ts'
 
@@ -12,6 +13,7 @@ export default function CreateTrip() {
   const dispatch = useDispatch()
   const user = useSelector((s: RootState) => s.auth.user)
   const [name, setName] = useState('Manali Mountain Convoy')
+  const [from, setFrom] = useState('Bhopal')
   const [destination, setDestination] = useState('Manali, Himachal Pradesh')
   const [date, setDate] = useState('2026-07-25')
   const [time, setTime] = useState('06:00')
@@ -19,6 +21,7 @@ export default function CreateTrip() {
   const [riders, setRiders] = useState(12)
   const [leader, setLeader] = useState('You (Trip Creator)')
   const [nameError, setNameError] = useState('')
+  const [fromError, setFromError] = useState('')
   const [destError, setDestError] = useState('')
   const [dateError, setDateError] = useState('')
   // The invite code and id are fixed when the form opens, so the QR code
@@ -28,22 +31,29 @@ export default function CreateTrip() {
   const [tripId] = useState(() => `trip-${Date.now()}`)
   const [copied, setCopied] = useState(false)
   const inviteLink = buildInviteLink({ code })
+  // Distance is estimated from a small table of known destinations — never
+  // a flat 612 km for every destination. Unknown destinations get no
+  // invented number: the trip is created with distance 0 and the app
+  // shows "distance not estimated yet" wherever the distance appears.
+  const estimatedKm = estimateDistanceKm(destination)
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
     const nErr = name.trim().length < 3 ? 'Give your trip a name (at least 3 characters).' : ''
+    const fErr = from.trim().length < 2 ? 'Enter where the trip starts.' : ''
     const dErr = destination.trim().length < 2 ? 'Enter a destination.' : ''
     const dtErr = !date || !time ? 'Pick a date and a start time.' : ''
     setNameError(nErr)
+    setFromError(fErr)
     setDestError(dErr)
     setDateError(dtErr)
-    if (nErr || dErr || dtErr) return
+    if (nErr || fErr || dErr || dtErr) return
     const trip: Trip = {
       id: tripId,
       name: name.trim(),
-      from: 'Bhopal',
+      from: from.trim(),
       to: destination.replace(/,.*$/, '').trim() || 'Manali',
-      distanceKm: 612,
+      distanceKm: estimatedKm ?? 0,
       riders,
       vehicles: Math.max(1, Math.ceil(riders / 4)),
       type,
@@ -63,7 +73,13 @@ export default function CreateTrip() {
       <AppHeader title="Create Trip" showBack />
       <form className="form-wrap" onSubmit={submit}>
         <Input id="trip-name" label="Trip Name" placeholder="e.g. Manali Mountain Convoy" value={name} onChange={(e) => { setName(e.target.value); if (nameError) setNameError('') }} error={nameError} aria-invalid={Boolean(nameError)} />
+        <Input id="from" label="Starting Point" placeholder="e.g. Bhopal" value={from} onChange={(e) => { setFrom(e.target.value); if (fromError) setFromError('') }} error={fromError} aria-invalid={Boolean(fromError)} />
         <Input id="destination" label="Destination" placeholder="Search destination…" value={destination} onChange={(e) => { setDestination(e.target.value); if (destError) setDestError('') }} error={destError} aria-invalid={Boolean(destError)} />
+        <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '-8px 0 16px' }}>
+          {estimatedKm !== null
+            ? `Distance ${from.trim() || 'Bhopal'} → ${destination.replace(/,.*$/, '').trim() || 'Manali'}: about ${estimatedKm} km (estimate).`
+            : 'Distance for this destination is not estimated yet — the trip will show “distance not estimated yet” instead of a made-up number.'}
+        </p>
         <div className="field row2">
           <div>
             <label htmlFor="date">Date</label>

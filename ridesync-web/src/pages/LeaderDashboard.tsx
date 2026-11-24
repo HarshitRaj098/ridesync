@@ -1,17 +1,19 @@
 import { useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { AppHeader, BottomNavigation, Button, EmptyState, MemberCard, Modal, showToast } from '../components/ui.tsx'
 import { SPEED_HISTORY, formatRideTime, separatedReason } from '../data/mockData.ts'
 import { browserNotify } from '../services/notify.ts'
-import { addChat, addNotification, regroup } from '../store/store.ts'
+import { addChat, addNotification, recordCompletedTrip, regroup } from '../store/store.ts'
 import type { RootState } from '../store/store.ts'
 
 export default function LeaderDashboard() {
   const navigate = useNavigate()
   const dispatch = useDispatch()
+  const queryClient = useQueryClient()
   const trip = useSelector((s: RootState) => s.trip.currentTrip)
-  const { members, alerts, speedKmh, rideSeconds, distanceCoveredKm } = useSelector((s: RootState) => s.convoy)
+  const { members, alerts, speedKmh, speedSamples, rideSeconds, distanceCoveredKm } = useSelector((s: RootState) => s.convoy)
   const pendingRequests = useSelector((s: RootState) =>
     s.joinRequests.items.filter((r) => r.tripId === trip.id && r.status === 'pending'),
   )
@@ -26,6 +28,18 @@ export default function LeaderDashboard() {
   const separated = members.filter((m) => separatedReason(m, members)).length
   // Ride health: mock score derived from live member states (98% safety baseline).
   const healthScore = Math.max(60, 98 - separated * 3)
+  // The text must say what the number says — it used to always read
+  // "Convoy healthy" even when riders were separated and the score fell.
+  const healthText =
+    separated === 0
+      ? { label: '● Convoy healthy', color: 'var(--success)' }
+      : healthScore >= 85
+        ? { label: `● ${separated} rider${separated > 1 ? 's' : ''} separated — mostly healthy`, color: 'var(--warning)' }
+        : { label: `● ${separated} rider${separated > 1 ? 's' : ''} separated — needs attention`, color: 'var(--danger)' }
+  // Real average of the speeds recorded this ride — not the current speed.
+  const avgSpeed = speedSamples.length > 0
+    ? Math.round(speedSamples.reduce((a, b) => a + b, 0) / speedSamples.length)
+    : speedKmh
   const maxSpeed = Math.max(...SPEED_HISTORY.map((s) => s.value), speedKmh)
 
   const sendBroadcast = () => {
@@ -34,18 +48,27 @@ export default function LeaderDashboard() {
     if (text.length > 200) { setBroadcastError('Keep broadcasts under 200 characters.'); return }
     const author = user ? `${user.name} (Leader)` : 'Rohit (Leader)'
     dispatch(addChat({ text, author, initials: user?.initials ?? 'RV' }))
-    dispatch(addNotification({ title: 'Broadcast sent', detail: `“${text}”`, kind: 'info' }))
+    dispatch(addNotification({ title: 'Broadcast sent', detail: `“${text}”`, kind: 'info', source: 'broadcast' }))
     browserNotify('Broadcast sent', text)
-    showToast('Broadcast sent to all riders')
+    showToast('Broadcast posted to convoy chat (demo — this device only)')
     setBroadcast('')
     setBroadcastError('')
   }
 
   const doRegroup = () => {
     dispatch(regroup())
-    dispatch(addNotification({ title: 'Regroup requested', detail: 'Leader asked all riders to regroup at the next stop.', kind: 'info' }))
+    dispatch(addNotification({ title: 'Regroup requested', detail: 'Leader asked all riders to regroup at the next stop.', kind: 'info', source: 'regroup' }))
     browserNotify('Regroup requested', 'Leader asked all riders to regroup at the next stop.')
-    showToast('Regroup request sent to all riders')
+    showToast('Regroup request posted (demo — this device only)')
+  }
+
+  const finishTrip = () => {
+    // Ending a ride updates the demo lifetime totals (Home/Profile),
+    // so the stats stop being frozen numbers.
+    dispatch(recordCompletedTrip({ km: Math.round(distanceCoveredKm) }))
+    void queryClient.invalidateQueries({ queryKey: ['rider-stats'] })
+    setShowSummary(false)
+    navigate('/home')
   }
 
   return (
@@ -63,7 +86,7 @@ export default function LeaderDashboard() {
             <div>
               <b>{healthScore}%</b>
               <div style={{ color: 'var(--text-dim)', fontSize: 12 }}>Ride health score</div>
-              <div style={{ color: 'var(--success)', fontSize: 12, fontWeight: 600, marginTop: 4 }}>● Convoy healthy</div>
+              <div style={{ color: healthText.color, fontSize: 12, fontWeight: 600, marginTop: 4 }}>{healthText.label}</div>
             </div>
           </div>
         </div>
@@ -74,7 +97,7 @@ export default function LeaderDashboard() {
         <div className="stat-card"><b>{separated}</b><span>Separated</span></div>
         <div className="stat-card"><b>{stopped}</b><span>Stopped</span></div>
         <div className="stat-card"><b>{offline}</b><span>Offline</span></div>
-        <div className="stat-card"><b>{speedKmh} km/h</b><span>Avg Speed Now</span></div>
+        <div className="stat-card"><b>{avgSpeed} km/h</b><span>Avg Speed (this ride)</span></div>
         <div className="stat-card"><b>{trip.riders}</b><span>Total Riders</span></div>
       </div>
       <p style={{ color: 'var(--text-faint)', fontSize: 11, padding: '8px 20px 0', margin: 0 }}>* Online counts the 5 named riders shown live; {trip.riders} riders are on the trip in total (mock data).</p>
@@ -145,7 +168,7 @@ export default function LeaderDashboard() {
               <b style={{ width: 34, textAlign: 'right', fontFamily: 'JetBrains Mono, monospace' }}>{s.value}</b>
             </div>
           ))}
-          <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '10px 0 0' }}>Alerts this ride: {alerts.length} · Safety score 98% · 3,140 km logged overall.</p>
+          <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '10px 0 0' }}>Alerts this ride: {alerts.length} · Ride health {healthScore}% · Demo data — sample speeds from the prototype, not this ride's GPS. Current speed now: {speedKmh} km/h.</p>
         </div>
       </div>
 
@@ -154,16 +177,16 @@ export default function LeaderDashboard() {
           title="Trip summary"
           icon="🏁"
           onClose={() => setShowSummary(false)}
-          actions={<button className="btn-confirm" onClick={() => navigate('/home')}>Done — back home</button>}
+          actions={<button className="btn-confirm" onClick={finishTrip}>Done — back home</button>}
         >
           <p>{trip.name} · {trip.from} → {trip.to}</p>
           <div className="summary-grid">
             <div className="stat-card"><b>{Math.round(distanceCoveredKm)} km</b><span>Distance ridden</span></div>
             <div className="stat-card"><b>{formatRideTime(rideSeconds)}</b><span>Ride time</span></div>
             <div className="stat-card"><b>{trip.riders}</b><span>Riders</span></div>
-            <div className="stat-card"><b>98%</b><span>Safety score</span></div>
+            <div className="stat-card"><b>{healthScore}%</b><span>Ride health (this ride)</span></div>
           </div>
-          <p style={{ marginBottom: 0 }}>Mock summary — distances and times are simulated, not real GPS data.</p>
+          <p style={{ marginBottom: 0 }}>Mock summary — distances, times and health are simulated from this ride, not real GPS data.</p>
         </Modal>
       ) : null}
       <BottomNavigation />

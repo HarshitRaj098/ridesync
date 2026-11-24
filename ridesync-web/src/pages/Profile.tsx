@@ -28,11 +28,14 @@ export default function Profile() {
       ) : isError ? (
         <ErrorState title="Profile could not load" detail="Your stats are mock data served locally — try again." onRetry={() => void refetch()} />
       ) : (
-        <div className="stats-grid">
-          <div className="stat-card"><b>{stats?.totalRides ?? 47}</b><span>Total Rides</span></div>
-          <div className="stat-card"><b>{(stats?.kmLogged ?? 3140).toLocaleString('en-IN')}</b><span>KM Logged</span></div>
-          <div className="stat-card"><b>{`${stats?.safetyScore ?? 98}%`}</b><span>Safety Score</span></div>
-        </div>
+        <>
+          <div className="stats-grid">
+            <div className="stat-card"><b>{stats?.totalRides ?? 47}</b><span>Total Rides</span></div>
+            <div className="stat-card"><b>{(stats?.kmLogged ?? 3140).toLocaleString('en-IN')}</b><span>KM Logged</span></div>
+            <div className="stat-card"><b>{`${stats?.safetyScore ?? 98}%`}</b><span>Safety Score</span></div>
+          </div>
+          <p style={{ color: 'var(--text-faint)', fontSize: 11, padding: '8px 20px 0', margin: 0 }}>Demo stats — sample totals, not a real account. Ending a ride in this demo adds to the totals above.</p>
+        </>
       )}
 
       <div className="section-label"><h3>Ride History</h3></div>

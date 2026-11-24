@@ -231,12 +231,11 @@ export function TripCard({ trip, onOpen }: { trip: Trip; onOpen?: () => void }) 
     <div className="card trip-card" onClick={open} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') open() }}>
       <div className="trip-card-top">
         <StatusBadge>{trip.startsIn}</StatusBadge>
-        <span style={{ color: 'var(--text-faint)' }}>•••</span>
       </div>
       <h4>{trip.name}</h4>
       <div className="route-line">
         <span>📍</span>
-        {trip.from} → {trip.to} · {trip.distanceKm} km
+        {trip.from} → {trip.to}{trip.distanceKm > 0 ? ` · ${trip.distanceKm} km` : ' · distance not estimated yet'}
       </div>
       <div className="trip-avatars">
         <div className="mini-avatar">RV</div>
@@ -283,22 +282,46 @@ export function MemberCard({ member, members }: { member: Member; members?: Memb
   )
 }
 
-/* ---------- AppHeader ---------- */
+/* ---------- AppHeader — with a real menu ----------
+ * The ☰ button used to toast "Menu coming soon" and do nothing. It now
+ * opens a real menu with links to the app's actual routes. */
 export function AppHeader({ title, showBack = false, onBack }: { title?: string; showBack?: boolean; onBack?: () => void }) {
   const navigate = useNavigate()
   const user = useSelector((s: RootState) => s.auth.user)
   const unread = useSelector((s: RootState) => s.notifications.unreadCount)
+  const trip = useSelector((s: RootState) => s.trip.currentTrip)
+  const [menuOpen, setMenuOpen] = useState(false)
   const goBack = () => {
     if (onBack) onBack()
     else navigate(-1)
   }
+  const menuItems = [
+    { to: '/home', label: '🏠 Home' },
+    { to: `/trips/${trip.id}/convoy`, label: '🗺️ My Trip — map' },
+    { to: `/trips/${trip.id}/lobby`, label: '👥 Trip Lobby' },
+    { to: '/notifications', label: `🔔 Notifications${unread > 0 ? ` (${unread})` : ''}` },
+    { to: '/profile', label: '👤 Profile' },
+    { to: '/settings', label: '⚙️ Settings' },
+  ]
   return (
     <header className="topbar">
       <div className="topbar-left">
         {showBack ? (
           <button className="icon-btn" onClick={goBack} aria-label="Back">←</button>
         ) : (
-          <button className="icon-btn" onClick={() => showToast('Menu coming soon')} aria-label="Menu">☰</button>
+          <div className="header-menu-wrap">
+            <button className="icon-btn" onClick={() => setMenuOpen((v) => !v)} aria-label="Menu" aria-expanded={menuOpen}>☰</button>
+            {menuOpen ? (
+              <>
+                <button className="header-menu-backdrop" aria-label="Close menu" onClick={() => setMenuOpen(false)} />
+                <nav className="header-menu" aria-label="Main menu">
+                  {menuItems.map((item) => (
+                    <Link key={item.to} to={item.to} onClick={() => setMenuOpen(false)}>{item.label}</Link>
+                  ))}
+                </nav>
+              </>
+            ) : null}
+          </div>
         )}
         <div className="brand">
           <div className="brand-mark">🏍️</div>
@@ -319,14 +342,17 @@ export function AppHeader({ title, showBack = false, onBack }: { title?: string;
 }
 
 /* ---------- BottomNavigation ---------- */
-const NAV_ITEMS = [
-  { to: '/home', label: 'Home', icon: '🏠' },
-  { to: '/trips/manali-2026/convoy', label: 'Trips', icon: '🗺️' },
-  { to: '/notifications', label: 'Alerts', icon: '🔔' },
-  { to: '/profile', label: 'Profile', icon: '👤' },
-]
 export function BottomNavigation() {
   const unread = useSelector((s: RootState) => s.notifications.unreadCount)
+  // Trips opens the CURRENT trip's convoy — not a hardcoded Manali URL —
+  // so it follows a trip you just created or joined.
+  const trip = useSelector((s: RootState) => s.trip.currentTrip)
+  const NAV_ITEMS = [
+    { to: '/home', label: 'Home', icon: '🏠' },
+    { to: `/trips/${trip.id}/convoy`, label: 'Trips', icon: '🗺️' },
+    { to: '/notifications', label: 'Alerts', icon: '🔔' },
+    { to: '/profile', label: 'Profile', icon: '👤' },
+  ]
   return (
     <nav className="bottom-nav">
       {NAV_ITEMS.map((item) => (

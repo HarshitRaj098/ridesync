@@ -72,6 +72,7 @@ export default function JoinTrip() {
       title: 'Join request sent',
       detail: `${name} asked to join ${tripName}. The leader can see the request in the Trip Lobby and Leader Dashboard.`,
       kind: 'info',
+      source: 'join',
     }))
   }
 

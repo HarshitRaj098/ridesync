@@ -6,7 +6,7 @@ import { EmptyState, MapControls, MemberCard, Modal, SOSButton, VoiceButton, sho
 import { BASE_LAT, BASE_LNG, formatRideTime, separatedReason } from '../data/mockData.ts'
 import { browserNotify } from '../services/notify.ts'
 import { isRealApi, postChat, sendSosApi } from '../services/api.ts'
-import { createRealSocket, disconnectRealSocket, isRealSocket, simulatedSocket } from '../services/socketService.ts'
+import { createRealSocket, disconnectRealSocket, isRealSocket } from '../services/socketService.ts'
 import { addChat, addNotification, applyLocationUpdate, closeSos, confirmSos, tick } from '../store/store.ts'
 import type { AppDispatch, RootState } from '../store/store.ts'
 import type { Member } from '../data/mockData.ts'
@@ -19,36 +19,43 @@ export default function ConvoyDashboard() {
   const { members, chat, alerts, rideSeconds, speedKmh, distanceCoveredKm, voiceActive, sosActive, sosSent } = useSelector((s: RootState) => s.convoy)
   const trip = useSelector((s: RootState) => s.trip.currentTrip)
   const user = useSelector((s: RootState) => s.auth.user)
+  const locationSharing = useSelector((s: RootState) => s.settings.locationSharing)
+  const emergencyContacts = useSelector((s: RootState) => s.contacts.items)
   const [tab, setTab] = useState<Tab>('members')
   const [expanded, setExpanded] = useState(false)
   const [chatText, setChatText] = useState('')
   const [satOn, setSatOn] = useState(false)
   const [trafficOn, setTrafficOn] = useState(false)
-  const [center, setCenter] = useState<[number, number]>([BASE_LAT, BASE_LNG])
-  // Bumped when the single compass button is tapped: ConvoyMap resets to
-  // the north-up default view (convoy centred, zoom 13).
-  const [resetView, setResetView] = useState(0)
+  // Map follow: on by default — the map pans with the leader as the
+  // convoy rides. Dragging/zooming by hand turns it off (ConvoyMap
+  // reports it); recenter / compass turn it back on.
+  const [follow, setFollow] = useState(true)
+  // Bumped when the compass is tapped: jump to the leader's live
+  // position, north-up, zoom 13. Bumped by recenter: pan to the leader,
+  // keeping the zoom. Both re-enable follow.
+  const [resetSignal, setResetSignal] = useState(0)
+  const [panSignal, setPanSignal] = useState(0)
 
   const speedRef = useRef(speedKmh)
   speedRef.current = speedKmh
+  // Ref mirror of the location-sharing toggle, so the GPS timer reads the
+  // current value without re-subscribing to the socket.
+  const locationSharingRef = useRef(locationSharing)
+  locationSharingRef.current = locationSharing
 
-  // Live movement.
-  // Real backend (VITE_SOCKET_URL set): join the trip room, receive real
-  // location:update / broadcast / sos events, and send our own GPS every
-  // 2.5s. Otherwise the simulated socket moves the mock riders.
+  // Live movement: the 1s tick in the store is the ONLY thing that moves
+  // riders (positions come from the demo route, driven by distance
+  // covered). There used to be a second writer here — the simulated
+  // socket rebuilt members from the seed every 2.5s and overwrote the
+  // tick, so markers shivered around the start point and the convoy
+  // never travelled. That socket stream is gone; in mock mode nothing
+  // subscribes to it. Real backend (VITE_SOCKET_URL set): join the trip
+  // room, receive real location:update / broadcast / sos events, and
+  // send our own GPS every 2.5s.
   useEffect(() => {
     const timer = setInterval(() => dispatch(tick()), 1000)
     if (!isRealSocket) {
-      const off = simulatedSocket.on('location:update', (payload) => {
-        const p = payload as { members: Member[] }
-        if (p?.members) dispatch(applyLocationUpdate(p.members))
-      })
-      simulatedSocket.start()
-      return () => {
-        clearInterval(timer)
-        off()
-        simulatedSocket.stop()
-      }
+      return () => clearInterval(timer)
     }
     const socket = createRealSocket()
     const tripId = trip.id
@@ -61,19 +68,21 @@ export default function ConvoyDashboard() {
       dispatch(addChat({ text: msg.text, author: msg.author, initials: msg.initials, authorId: msg.authorId }))
     }
     const onBroadcast = (msg: { author: string; text: string }) => {
-      dispatch(addNotification({ title: `${msg.author} broadcast a message`, detail: msg.text, kind: 'info' }))
+      dispatch(addNotification({ title: `${msg.author} broadcast a message`, detail: msg.text, kind: 'info', source: 'broadcast' }))
       browserNotify('Convoy broadcast', msg.text)
     }
     const onSos = (data: { name: string }) => {
-      dispatch(addNotification({ title: `SOS from ${data.name}`, detail: 'Emergency SOS — live location broadcast to the convoy.', kind: 'danger' }))
+      dispatch(addNotification({ title: `SOS from ${data.name}`, detail: 'Emergency SOS — live location broadcast to the convoy.', kind: 'danger', source: 'sos' }))
       browserNotify('SOS received', `${data.name} sent an emergency SOS.`)
     }
     socket.on('location:update', onLocation)
     socket.on('chat:message', onChat)
     socket.on('broadcast', onBroadcast)
     socket.on('sos', onSos)
-    // Send our own position so other riders (and the server) see us move.
+    // Send our own position so other riders (and the server) see us move —
+    // unless live location sharing is off in Settings (then we send nothing).
     const locTimer = setInterval(() => {
+      if (!locationSharingRef.current) return
       socket.emit('location:update', {
         tripId,
         lat: BASE_LAT + (Math.random() - 0.5) * 0.001,
@@ -94,9 +103,13 @@ export default function ConvoyDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, trip.id])
 
-  const remainingKm = Math.max(0, trip.distanceKm - Math.round(distanceCoveredKm))
-  const etaHours = speedKmh > 0 ? remainingKm / speedKmh : 0
-  const etaText = `${Math.floor(etaHours)}h ${Math.round((etaHours % 1) * 60)}m to ${trip.to}`
+  const remainingKm = trip.distanceKm > 0 ? Math.max(0, trip.distanceKm - Math.round(distanceCoveredKm)) : 0
+  const etaHours = speedKmh > 0 && trip.distanceKm > 0 ? remainingKm / speedKmh : 0
+  // A trip whose distance was never estimated shows that honestly instead
+  // of a made-up ETA.
+  const etaText = trip.distanceKm > 0
+    ? `${Math.floor(etaHours)}h ${Math.round((etaHours % 1) * 60)}m to ${trip.to}`
+    : `Distance to ${trip.to} not estimated yet`
   const gaugePct = Math.min(speedKmh / 120, 1)
   const gaugeOffset = 264 - 264 * gaugePct * 0.75
 
@@ -107,22 +120,34 @@ export default function ConvoyDashboard() {
     if (!text) return
     dispatch(addChat({ text, author: user?.name ?? 'You', initials: user?.initials ?? 'HR', authorId: user?.id }))
     if (isRealApi) postChat(trip.id, text).catch(() => showToast('Message saved locally — server unreachable'))
-    dispatch(addNotification({ title: 'Message sent to convoy', detail: text, kind: 'info' }))
+    dispatch(addNotification({ title: 'Message sent to convoy', detail: text, kind: 'info', source: 'chat' }))
     setChatText('')
   }
 
+  // SOS in this demo is shown to the convoy on this device only. Nobody
+  // is actually messaged — there is no messaging service yet — so the
+  // copy must never claim contacts were notified. The modal lists the
+  // saved emergency contacts so the rider can see who SOS would reach.
   const sendSos = () => {
     dispatch(confirmSos())
     if (isRealApi) sendSosApi(trip.id, BASE_LAT, BASE_LNG).catch(() => showToast('SOS saved locally — server unreachable'))
-    dispatch(addNotification({ title: 'SOS sent', detail: 'Your live location was broadcast to the convoy leader and emergency contacts.', kind: 'danger' }))
-    browserNotify('SOS sent', 'Your live location was broadcast to the convoy leader and emergency contacts.')
-    showToast('🚨 SOS broadcast to convoy & contacts')
+    dispatch(addNotification({ title: 'SOS sent', detail: 'Shown to the convoy on this device (demo). Emergency contacts were not messaged — no messaging service is connected yet.', kind: 'danger', source: 'sos' }))
+    browserNotify('SOS sent', 'SOS shown to the convoy on this device (demo). No contacts messaged.')
+    showToast('🚨 SOS shown to convoy (demo — no contacts messaged)')
   }
 
   return (
     <div className="page no-nav dash-screen">
       <div className="map-wrap">
-        <ConvoyMap members={members} center={center} satOn={satOn} trafficOn={trafficOn} resetView={resetView} />
+        <ConvoyMap
+          members={members}
+          satOn={satOn}
+          trafficOn={trafficOn}
+          follow={follow}
+          onUserMoved={() => setFollow(false)}
+          resetSignal={resetSignal}
+          panSignal={panSignal}
+        />
 
         <div className="map-overlay-top">
           <button className="circle-btn" onClick={() => navigate('/home')} aria-label="Back home">←</button>
@@ -141,10 +166,14 @@ export default function ConvoyDashboard() {
             showToast(trafficOn ? 'Traffic layer off' : 'Traffic layer on (simulated)')
           }}
           onRecenter={() => {
-            setCenter([BASE_LAT, BASE_LNG])
+            setFollow(true)
+            setPanSignal((v) => v + 1)
             showToast('Recentered on convoy')
           }}
-          onResetView={() => setResetView((v) => v + 1)}
+          onResetView={() => {
+            setFollow(true)
+            setResetSignal((v) => v + 1)
+          }}
           trip={trip}
         />
 
@@ -162,8 +191,11 @@ export default function ConvoyDashboard() {
             </svg>
             <div className="gauge-center"><b>{speedKmh}</b><span>km/h</span></div>
           </div>
-          <div className="eta-chip">ETA {etaText} · {remainingKm} km left</div>
+          <div className="eta-chip">ETA {etaText}{trip.distanceKm > 0 ? ` · ${remainingKm} km left` : ''}</div>
           <div className="eta-chip">{trip.name} · {members.filter((m) => m.status === 'online').length} riding · {Math.round(distanceCoveredKm)} km done</div>
+          <div className="eta-chip">Demo map · simulated positions, not live GPS</div>
+          {!locationSharing ? <div className="eta-chip">📍 Location sharing off — your position is hidden from the convoy</div> : null}
+          {!follow ? <div className="eta-chip">Map paused — tap ◎ to follow the convoy again</div> : null}
         </div>
 
         <VoiceButton />
@@ -185,7 +217,7 @@ export default function ConvoyDashboard() {
                 {members.map((m) => (
                   <MemberCard key={m.id} member={m} members={members} />
                 ))}
-                <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '10px 0 0' }}>+ 7 more riders in this convoy. {voiceActive ? '🎙️ Push-to-talk is live.' : ''}</p>
+                <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: '10px 0 0' }}>+ {Math.max(0, trip.riders - members.length)} more riders in this convoy. {voiceActive ? '🎙️ Push-to-talk is live.' : ''}</p>
               </div>
             )}
             {tab === 'chat' && (
@@ -207,7 +239,7 @@ export default function ConvoyDashboard() {
                 {sosSent ? (
                   <div className="alert-row" style={{ borderColor: 'rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.07)' }}>
                     <div className="a-ic" style={{ background: 'rgba(239,68,68,0.15)', color: 'var(--danger)' }}>🚨</div>
-                    <div><b>SOS broadcast sent</b><span>Leader and emergency contacts notified.</span></div>
+                    <div><b>SOS shown to convoy</b><span>Shown on this device (demo). No emergency contacts were messaged.</span></div>
                   </div>
                 ) : null}
                 {alerts.length === 0 ? (
@@ -244,7 +276,18 @@ export default function ConvoyDashboard() {
             </>
           }
         >
-          <p>Your live location and vehicle details will be broadcast to your convoy leader, emergency contacts, and nearby riders immediately.</p>
+          <p>
+            Your SOS is shown to the convoy on this device only (demo). Nobody is actually messaged — there is no
+            messaging service connected yet.
+          </p>
+          {emergencyContacts.length > 0 ? (
+            <p style={{ textAlign: 'left', marginBottom: 20 }}>
+              Saved emergency contacts — listed for SOS, not messaged in the demo:
+              <br />{emergencyContacts.map((c) => `${c.name} (${c.phone})`).join(' · ')}
+            </p>
+          ) : (
+            <p style={{ marginBottom: 20 }}>No emergency contacts saved yet — add them in Settings so SOS knows who to list.</p>
+          )}
         </Modal>
       ) : null}
     </div>

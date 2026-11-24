@@ -7,6 +7,8 @@ import {
   NOTIFICATIONS,
   PAST_TRIPS,
   RIDER_STATS,
+  liveMemberNote,
+  memberRoutePosition,
   type AlertItem,
   type ChatMessage,
   type Member,
@@ -145,26 +147,47 @@ const joinRequestsSlice = createSlice({
   },
 })
 
-/* ---------------- Convoy (live) ---------------- */
+/* ---------------- Convoy (live) ----------------
+ * ONE movement model: the 1s tick is the only thing that moves riders.
+ * Positions come from the demo route (memberRoutePosition) driven by
+ * distanceCoveredKm — the convoy genuinely travels Bhopal → Manali on
+ * the map instead of shivering around the start point. The simulated
+ * socket used to overwrite these positions with fresh jitter around the
+ * seed every 2.5s, wiping the tick's movement; it no longer sends member
+ * positions (see services/socketService.ts). */
 interface ConvoyState {
   members: Member[]
   chat: ChatMessage[]
   alerts: AlertItem[]
   rideSeconds: number
   speedKmh: number
+  /** Last speed samples (one per tick, capped) — the Leader Dashboard's
+   * average speed is a real average of these, not the current speed. */
+  speedSamples: number[]
   distanceCoveredKm: number
   voiceActive: boolean
   sosActive: boolean
   sosSent: boolean
 }
+/** Riders start on the demo route at the trip's progress (214 km done),
+ * not at the Bhopal start point — otherwise the map would show them in
+ * the wrong place until the first tick. */
+function initialConvoyMembers(): Member[] {
+  return MEMBERS.map((m) => {
+    const [lat, lng] = memberRoutePosition(m.id, 214, CURRENT_TRIP.distanceKm)
+    const next = { ...m, lat, lng }
+    return { ...next, note: liveMemberNote(next) }
+  })
+}
 const convoySlice = createSlice({
   name: 'convoy',
   initialState: {
-    members: MEMBERS,
+    members: initialConvoyMembers(),
     chat: CHAT_MESSAGES,
     alerts: ALERTS,
     rideSeconds: 6128, // 01:42:08, matching the prototype timer
     speedKmh: 62,
+    speedSamples: [62],
     distanceCoveredKm: 214,
     voiceActive: false,
     sosActive: false,
@@ -175,11 +198,17 @@ const convoySlice = createSlice({
       state.rideSeconds += 1
       state.speedKmh = Math.max(45, Math.min(75, state.speedKmh + Math.round((Math.random() - 0.5) * 4)))
       state.distanceCoveredKm = Math.round((state.distanceCoveredKm + state.speedKmh / 3600) * 100) / 100
-      state.members = state.members.map((m) =>
-        m.status === 'online'
-          ? { ...m, lat: m.lat + (Math.random() - 0.5) * 0.0006, lng: m.lng + (Math.random() - 0.5) * 0.0006, speedKmh: Math.max(45, Math.min(75, m.speedKmh + Math.round((Math.random() - 0.5) * 4))) }
-          : m,
-      )
+      state.speedSamples.push(state.speedKmh)
+      if (state.speedSamples.length > 120) state.speedSamples.shift()
+      state.members = state.members.map((m) => {
+        if (m.status !== 'online') return { ...m, speedKmh: 0 }
+        const speedKmh = Math.max(45, Math.min(75, m.speedKmh + Math.round((Math.random() - 0.5) * 4)))
+        // Online riders advance along the demo route with the convoy.
+        // Stopped/offline riders keep their position and fall behind.
+        const [lat, lng] = memberRoutePosition(m.id, state.distanceCoveredKm, CURRENT_TRIP.distanceKm)
+        const next = { ...m, lat, lng, speedKmh }
+        return { ...next, note: liveMemberNote(next) }
+      })
     },
     applyLocationUpdate(state, action: PayloadAction<Member[]>) {
       state.members = action.payload
@@ -202,19 +231,28 @@ const convoySlice = createSlice({
     confirmSos(state) {
       state.sosActive = false
       state.sosSent = true
-      state.alerts.unshift({ id: `a-${Date.now()}`, title: 'SOS sent', detail: 'Your live location was broadcast to the convoy leader and emergency contacts.', kind: 'danger' })
+      // Honest in the demo: the SOS is shown to the convoy on this device.
+      // Nobody is actually messaged — there is no messaging service yet,
+      // so the alert must not claim contacts were notified.
+      state.alerts.unshift({ id: `a-${Date.now()}`, title: 'SOS sent', detail: 'Shown to the convoy on this device (demo). Emergency contacts were not messaged — no messaging service is connected yet.', kind: 'danger' })
     },
     regroup(state) {
       state.members = state.members.map((m) =>
-        m.status === 'stopped' ? { ...m, status: 'online' as const, speedKmh: 55, note: '55 km/h · regrouping with convoy' } : m,
+        m.status === 'stopped' ? { ...m, status: 'online' as const, speedKmh: 55, note: '55 km/h' } : m,
       )
       state.alerts.unshift({ id: `a-${Date.now()}`, title: 'Regroup requested', detail: 'Leader asked all riders to regroup at the next stop.', kind: 'info' })
     },
   },
 })
 
-/* ---------------- Notifications ---------------- */
+/* ---------------- Notifications ----------------
+ * Every notification carries its source (chat / broadcast / SOS / regroup
+ * / join request / system) so the list never mixes four writers into one
+ * anonymous feed (Frontend X11). The Settings notifications toggle is
+ * honoured here too: when it is off, no new in-app notification is stored
+ * (browser pop-ups are already gated in services/notify.ts). */
 export type NotificationKind = 'warn' | 'danger' | 'info' | 'ok'
+export type NotificationSource = 'chat' | 'broadcast' | 'sos' | 'regroup' | 'system' | 'join'
 export interface NotificationItem {
   id: string
   title: string
@@ -222,12 +260,25 @@ export interface NotificationItem {
   time: string
   kind: NotificationKind
   unread: boolean
+  source: NotificationSource
 }
 interface NotificationsState {
   items: NotificationItem[]
   unreadCount: number
 }
-const storedNotifications = loadJson<NotificationItem[]>('ridesync-notifications', NOTIFICATIONS)
+const storedNotifications = loadJson<NotificationItem[]>('ridesync-notifications', NOTIFICATIONS).map((n) => ({
+  ...n,
+  source: (n as NotificationItem).source ?? 'system',
+}))
+function notificationsEnabledInSettings(): boolean {
+  try {
+    const raw = localStorage.getItem('ridesync-settings')
+    if (!raw) return true
+    return (JSON.parse(raw) as { notificationsEnabled?: boolean }).notificationsEnabled !== false
+  } catch {
+    return true
+  }
+}
 const notificationsSlice = createSlice({
   name: 'notifications',
   initialState: {
@@ -235,12 +286,15 @@ const notificationsSlice = createSlice({
     unreadCount: storedNotifications.filter((n) => n.unread).length,
   } as NotificationsState,
   reducers: {
-    /** A new in-app notification (SOS, regroup, broadcast, new chat). Persisted. */
-    addNotification(state, action: PayloadAction<{ title: string; detail: string; kind: NotificationKind }>) {
+    /** A new in-app notification (SOS, regroup, broadcast, new chat). Persisted.
+     * Dropped entirely when notifications are off in Settings. */
+    addNotification(state, action: PayloadAction<{ title: string; detail: string; kind: NotificationKind; source?: NotificationSource }>) {
+      if (!notificationsEnabledInSettings()) return
       state.items.unshift({
         id: `n-${Date.now()}`,
         time: 'Just now',
         unread: true,
+        source: action.payload.source ?? 'system',
         ...action.payload,
       })
       state.unreadCount = state.items.filter((n) => n.unread).length
@@ -283,12 +337,76 @@ const settingsSlice = createSlice({
   },
 })
 
+/* ---------------- Lifetime rider stats (demo totals) ----------------
+ * Seeded from the prototype's 47 rides / 3,140 km, but no longer frozen:
+ * ending a trip in this demo adds to them (recordCompletedTrip), so the
+ * Home/Profile totals are real local state that changes when a ride
+ * happens. They are still demo totals — the UI labels them as such —
+ * because there is no real account or backend yet. */
+interface LifetimeState {
+  totalRides: number
+  kmLogged: number
+}
+const storedLifetime = loadJson<LifetimeState>('ridesync-lifetime', {
+  totalRides: RIDER_STATS.totalRides,
+  kmLogged: RIDER_STATS.kmLogged,
+})
+const lifetimeSlice = createSlice({
+  name: 'lifetime',
+  initialState: storedLifetime,
+  reducers: {
+    recordCompletedTrip(state, action: PayloadAction<{ km: number }>) {
+      state.totalRides += 1
+      state.kmLogged += Math.max(0, Math.round(action.payload.km))
+      saveJson('ridesync-lifetime', state)
+    },
+  },
+})
+
+/* ---------------- Emergency contacts (SOS) ----------------
+ * Real contacts, added/edited/deleted in Settings and stored in
+ * localStorage. Seeded EMPTY on purpose — inventing two fake contacts
+ * with fake numbers would be exactly the fake-data problem this pass
+ * fixes, and SOS must never claim it notified people who do not exist.
+ * The SOS modal lists these contacts so the rider can see who SOS
+ * would reach; in the demo they are listed, not messaged, because no
+ * messaging service is connected yet. */
+export interface EmergencyContact {
+  id: string
+  name: string
+  phone: string
+}
+interface ContactsState {
+  items: EmergencyContact[]
+}
+const storedContacts = loadJson<EmergencyContact[]>('ridesync-emergency-contacts', [])
+const contactsSlice = createSlice({
+  name: 'contacts',
+  initialState: { items: storedContacts } as ContactsState,
+  reducers: {
+    addContact(state, action: PayloadAction<{ name: string; phone: string }>) {
+      state.items.push({ id: `ec-${Date.now()}`, ...action.payload })
+      saveJson('ridesync-emergency-contacts', state.items)
+    },
+    updateContact(state, action: PayloadAction<{ id: string; name: string; phone: string }>) {
+      state.items = state.items.map((c) => (c.id === action.payload.id ? { ...action.payload } : c))
+      saveJson('ridesync-emergency-contacts', state.items)
+    },
+    removeContact(state, action: PayloadAction<string>) {
+      state.items = state.items.filter((c) => c.id !== action.payload)
+      saveJson('ridesync-emergency-contacts', state.items)
+    },
+  },
+})
+
 export const { login, logout } = authSlice.actions
 export const { createTrip, joinTrip, selectTrip } = tripSlice.actions
 export const { requestJoin, cancelJoinRequest } = joinRequestsSlice.actions
 export const { tick, applyLocationUpdate, addChat, toggleVoice, setVoiceActive, openSos, closeSos, confirmSos, regroup } = convoySlice.actions
 export const { addNotification, markAllRead, markRead } = notificationsSlice.actions
 export const { toggleSetting } = settingsSlice.actions
+export const { recordCompletedTrip } = lifetimeSlice.actions
+export const { addContact, updateContact, removeContact } = contactsSlice.actions
 
 export const store = configureStore({
   reducer: {
@@ -298,6 +416,8 @@ export const store = configureStore({
     convoy: convoySlice.reducer,
     notifications: notificationsSlice.reducer,
     settings: settingsSlice.reducer,
+    lifetime: lifetimeSlice.reducer,
+    contacts: contactsSlice.reducer,
   },
 })
 

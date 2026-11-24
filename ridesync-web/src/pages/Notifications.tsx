@@ -12,6 +12,18 @@ const ICONS: Record<string, { icon: string; cls: string }> = {
   ok: { icon: '✅', cls: 'ok' },
 }
 
+/** Where a notification came from — chat, broadcast, SOS, regroup, a join
+ * request, or a system alert — so the list never mixes four writers into
+ * one anonymous feed. */
+const SOURCE_LABELS: Record<string, string> = {
+  chat: 'Chat',
+  broadcast: 'Broadcast',
+  sos: 'SOS',
+  regroup: 'Regroup',
+  system: 'System',
+  join: 'Join request',
+}
+
 type Filter = 'all' | 'unread' | 'alerts'
 
 export default function Notifications() {
@@ -79,7 +91,7 @@ export default function Notifications() {
                 <div style={{ flex: 1 }}>
                   <b>{n.title}</b>
                   <span>{n.detail}</span>
-                  <time>{n.time}</time>
+                  <time>{n.time} · {SOURCE_LABELS[n.source ?? 'system'] ?? 'System'}</time>
                 </div>
                 {n.unread ? <span className="badge-dot" style={{ position: 'static', flexShrink: 0, marginTop: 6 }} /> : null}
               </div>

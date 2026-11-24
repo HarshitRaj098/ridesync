@@ -53,6 +53,17 @@ export async function registerApi(name: string, email: string, password: string)
 export async function fetchRiderStats() {
   if (!isRealApi) {
     await delay(350)
+    // Demo totals that grow when a trip is ended in this demo (see the
+    // lifetime slice in store.ts) — not the frozen seed numbers.
+    try {
+      const raw = localStorage.getItem('ridesync-lifetime')
+      if (raw) {
+        const saved = JSON.parse(raw) as { totalRides: number; kmLogged: number }
+        return { totalRides: saved.totalRides, kmLogged: saved.kmLogged, safetyScore: RIDER_STATS.safetyScore }
+      }
+    } catch {
+      // Fall through to the seed totals.
+    }
     return { ...RIDER_STATS }
   }
   const { data } = await api.get<{ totalRides: number; kmLogged: number; safetyScore: number }>('/api/users/me/stats')
