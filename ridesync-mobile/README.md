@@ -82,10 +82,15 @@ npm run typecheck   # tsc --noEmit
   `src/components/ConvoyMap.web.tsx` (fallback) — so the native-only maps
   code is never bundled for web. A web export (`npx expo export --platform
   web`) was verified to build in this workspace.
-- **Google Maps API key (Android):** put your key in `app.json` under
-  `expo.android.config.googleMaps.apiKey` (currently the placeholder
-  `YOUR_GOOGLE_MAPS_API_KEY_HERE`). No key is bundled in this repo — do not
-  commit a real key. Without a key, maps may render with limited tiles.
+- **Google Maps API key (Android):** Expo Go needs **no key** — it uses its own
+  built-in key, so the map works in Expo Go with no setup. That is why
+  `app.json` has **no** `android.config.googleMaps.apiKey` in this repo: a key
+  restricted to `app.ridesync` is rejected by Google when the app runs inside
+  Expo Go (`host.exp.exponent`), and the map then shows "API key required".
+  A key is only needed for a real development/production build (EAS build or
+  `npx expo run:android`), where the app runs as `app.ridesync` — add it
+  there, locally, as `expo.android.config.googleMaps.apiKey`, and keep it out
+  of the public repo. Do not commit a real key.
   iOS uses Apple Maps by default and needs no key.
 - Location permission is requested by `expo-location`; the app currently
   simulates movement, so it works without granting it.
