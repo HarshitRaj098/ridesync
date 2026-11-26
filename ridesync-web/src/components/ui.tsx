@@ -373,13 +373,24 @@ export function BottomNavigation() {
  * (src/services/join.ts) and says "copied" only when the copy succeeded.
  * Camera opens the device camera / photo picker and shows the photo you
  * took, on this device only — nothing is uploaded or shared with the
- * convoy, because there is no photo server yet. */
-export function MapControls({ onRecenter, onResetView, onToggleSat, satOn, trip }: {
+ * convoy, because there is no photo server yet.
+ * Zoom + / - zoom the real Leaflet map one level per tap (map.zoomIn /
+ * map.zoomOut, via the dashboard) and dim at min/max zoom. A button zoom
+ * is a manual zoom: it pauses map-follow exactly like a drag or a
+ * scroll-wheel zoom (the map's zoomstart fires the same way). */
+export function MapControls({ onRecenter, onResetView, onToggleSat, satOn, trip, onZoomIn, onZoomOut, zoom, minZoom, maxZoom }: {
   onRecenter: () => void
   onResetView: () => void
   onToggleSat: () => void
   satOn: boolean
   trip: { name: string; code: string }
+  /** Zoom the real map one level in / out. */
+  onZoomIn: () => void
+  onZoomOut: () => void
+  /** Live zoom level, and the map's min/max — the buttons dim at the ends. */
+  zoom: number
+  minZoom: number
+  maxZoom: number
 }) {
   const [copied, setCopied] = useState(false)
   const [shareFailedText, setShareFailedText] = useState('')
@@ -439,6 +450,8 @@ export function MapControls({ onRecenter, onResetView, onToggleSat, satOn, trip 
         <button className="circle-btn" title={satOn ? 'Standard view' : 'Satellite view'} aria-label={satOn ? 'Switch to standard map view' : 'Switch to satellite view'} aria-pressed={satOn} onClick={onToggleSat}>🛰️</button>
         <button className={`circle-btn${copied ? ' active' : ''}`} title="Share invite link + code" aria-label="Share trip invite link and code" aria-pressed={copied} onClick={shareInvite}>{copied ? '✓' : '🔗'}</button>
         <button className="circle-btn" title="Take a photo" aria-label="Take a photo" onClick={() => fileRef.current?.click()}>📷</button>
+        <button className="circle-btn zoom-btn" title="Zoom in" aria-label="Zoom in" disabled={zoom >= maxZoom} onClick={onZoomIn}>+</button>
+        <button className="circle-btn zoom-btn" title="Zoom out" aria-label="Zoom out" disabled={zoom <= minZoom} onClick={onZoomOut}>−</button>
         <input
           ref={fileRef}
           type="file"

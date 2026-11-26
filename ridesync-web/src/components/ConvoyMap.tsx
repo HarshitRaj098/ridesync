@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import { MapContainer, Marker, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import { distanceFromLeaderKm, type Member } from '../data/mockData.ts'
@@ -27,14 +27,23 @@ function InvalidateSize() {
 }
 
 /** Compass action: jump back to the rider's real position when known,
- * otherwise to the default view, zoom 13 when positioned. */
-function ResetView({ userPosition, signal }: { userPosition: [number, number] | null; signal: number }) {
+ * otherwise to the default view, zoom 13 when positioned.
+ * setView fires zoomstart when the zoom changes (Leaflet animates it),
+ * so the move is marked programmatic BEFORE the call — otherwise
+ * UserMoveWatcher would read the compass tap as the rider looking around
+ * and immediately show the "Map paused" chip. The flag clears on
+ * moveend/zoomend; the timeout is a backstop for a no-op setView (already
+ * at that exact view), which fires no end event at all. */
+function ResetView({ userPosition, signal, programmaticRef }: { userPosition: [number, number] | null; signal: number; programmaticRef: { current: boolean } }) {
   const map = useMap()
   useEffect(() => {
     if (signal <= 0) return
+    programmaticRef.current = true
     if (userPosition) map.setView(userPosition, 13)
     else map.setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM)
-  }, [map, userPosition, signal])
+    const t = window.setTimeout(() => { programmaticRef.current = false }, 500)
+    return () => window.clearTimeout(t)
+  }, [map, userPosition, signal, programmaticRef])
   return null
 }
 
@@ -51,11 +60,36 @@ function PanToUser({ userPosition, signal }: { userPosition: [number, number] | 
 }
 
 /** A manual drag or zoom means the rider is looking around — stop
- * following until they tap recenter or the compass again. */
-function UserMoveWatcher({ onUserMoved }: { onUserMoved: () => void }) {
+ * following until they tap recenter or the compass again.
+ * Only genuine user moves pause: dragstart fires for user drags only
+ * (panTo never fires it), and zoomstart is ignored while a compass
+ * setView is in flight (see ResetView). moveend/zoomend clear the
+ * programmatic flag. */
+function UserMoveWatcher({ onUserMoved, programmaticRef }: { onUserMoved: () => void; programmaticRef: { current: boolean } }) {
   useMapEvents({
-    dragstart: () => onUserMoved(),
-    zoomstart: () => onUserMoved(),
+    dragstart: () => { if (!programmaticRef.current) onUserMoved() },
+    zoomstart: () => { if (!programmaticRef.current) onUserMoved() },
+    moveend: () => { programmaticRef.current = false },
+    zoomend: () => { programmaticRef.current = false },
+  })
+  return null
+}
+
+/** Reports the live Leaflet map and zoom level up to the dashboard, so
+ * the +/- buttons can zoom the real map and disable at min/max zoom.
+ * Callbacks are read through a ref so this effect runs once, on mount;
+ * zoomend keeps the level current after scroll, pinch and button zooms. */
+function MapStateReporter({ onMapReady, onZoomChange }: { onMapReady: (map: L.Map) => void; onZoomChange: (zoom: number) => void }) {
+  const map = useMap()
+  const callbacksRef = useRef({ onMapReady, onZoomChange })
+  callbacksRef.current = { onMapReady, onZoomChange }
+  useEffect(() => {
+    callbacksRef.current.onMapReady(map)
+    callbacksRef.current.onZoomChange(map.getZoom())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map])
+  useMapEvents({
+    zoomend: () => callbacksRef.current.onZoomChange(map.getZoom()),
   })
   return null
 }
@@ -79,6 +113,8 @@ export default function ConvoyMap({
   onUserMoved = () => undefined,
   resetSignal = 0,
   panSignal = 0,
+  onMapReady = () => undefined,
+  onZoomChange = () => undefined,
 }: {
   /** Real members only. A member without a position has no marker. */
   members: Member[]
@@ -91,16 +127,24 @@ export default function ConvoyMap({
   resetSignal?: number
   /** Bump to pan to the rider's position, keeping the zoom (recenter). */
   panSignal?: number
+  /** Called once with the live Leaflet map, so the dashboard can zoom it. */
+  onMapReady?: (map: L.Map) => void
+  /** Called with the zoom level on load and after every zoom. */
+  onZoomChange?: (zoom: number) => void
 }) {
   const initialCenter: [number, number] = userPosition ?? DEFAULT_MAP_CENTER
   const initialZoom = userPosition ? 13 : DEFAULT_MAP_ZOOM
+  // Shared with ResetView/UserMoveWatcher: true while a compass setView
+  // is in flight, so its zoomstart is not mistaken for a manual move.
+  const programmaticRef = useRef(false)
   return (
     <div className="leaflet-map">
-      <MapContainer center={initialCenter} zoom={initialZoom} zoomControl={false} attributionControl={false} style={{ height: '100%', width: '100%' }}>
+      <MapContainer center={initialCenter} zoom={initialZoom} zoomControl={false} attributionControl={false} maxZoom={19} style={{ height: '100%', width: '100%' }}>
         <InvalidateSize />
-        <ResetView userPosition={userPosition} signal={resetSignal} />
+        <ResetView userPosition={userPosition} signal={resetSignal} programmaticRef={programmaticRef} />
         <PanToUser userPosition={userPosition} signal={panSignal} />
-        <UserMoveWatcher onUserMoved={onUserMoved} />
+        <UserMoveWatcher onUserMoved={onUserMoved} programmaticRef={programmaticRef} />
+        <MapStateReporter onMapReady={onMapReady} onZoomChange={onZoomChange} />
         <TileLayer
           url={
             satOn

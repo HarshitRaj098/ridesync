@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useParams } from 'react-router-dom'
-import ConvoyMap from '../components/ConvoyMap.tsx'
+import type { Map as LeafletMap } from 'leaflet'
+import ConvoyMap, { DEFAULT_MAP_ZOOM } from '../components/ConvoyMap.tsx'
 import { EmptyState, MapControls, MemberCard, Modal, SOSButton, VoiceButton, showToast } from '../components/ui.tsx'
 import { formatRideTime } from '../data/mockData.ts'
 import { getConvoySummary, isTripLeader } from '../services/convoySummary.ts'
@@ -35,6 +36,49 @@ export default function ConvoyDashboard() {
   // recenter: pan there, keeping the zoom.
   const [resetSignal, setResetSignal] = useState(0)
   const [panSignal, setPanSignal] = useState(0)
+  // Live Leaflet map + zoom, reported by the map itself. The +/- buttons
+  // zoom this map for real; the buttons dim at the map's min/max zoom.
+  const mapRef = useRef<LeafletMap | null>(null)
+  const [zoom, setZoom] = useState(userPosition ? 13 : DEFAULT_MAP_ZOOM)
+  const [minZoom, setMinZoom] = useState(0)
+  const [maxZoom, setMaxZoom] = useState(19)
+  // True once the rider moves the map by hand (drag, scroll/pinch zoom,
+  // or the +/- buttons) — the "Map paused" chip shows until recenter or
+  // the compass brings the map back to the rider.
+  const [mapPaused, setMapPaused] = useState(false)
+
+  const handleMapReady = useCallback((map: LeafletMap) => {
+    mapRef.current = map
+    setMinZoom(map.getMinZoom())
+    setMaxZoom(map.getMaxZoom())
+  }, [])
+  const handleZoomChange = useCallback((z: number) => setZoom(z), [])
+  const handleUserMoved = useCallback(() => setMapPaused(true), [])
+  // One level per tap, with a smooth Leaflet animation. The map's own
+  // zoomstart fires, so a button zoom pauses follow exactly like a
+  // manual scroll-wheel zoom. At min/max zoom do nothing — never error.
+  const zoomIn = useCallback(() => {
+    const map = mapRef.current
+    if (!map || map.getZoom() >= map.getMaxZoom()) return
+    map.zoomIn()
+  }, [])
+  const zoomOut = useCallback(() => {
+    const map = mapRef.current
+    if (!map || map.getZoom() <= map.getMinZoom()) return
+    map.zoomOut()
+  }, [])
+  // Recenter / compass resume following: clear the paused state first,
+  // then move the map. The compass setView is marked programmatic inside
+  // the map, so its zoomstart does not re-pause immediately.
+  const handleRecenter = useCallback(() => {
+    setMapPaused(false)
+    setPanSignal((v) => v + 1)
+    showToast(userPosition ? 'Recentered on your position' : 'Your position is unknown — showing the default view')
+  }, [userPosition])
+  const handleResetView = useCallback(() => {
+    setMapPaused(false)
+    setResetSignal((v) => v + 1)
+  }, [])
 
   const speedRef = useRef(speedKmh)
   speedRef.current = speedKmh
@@ -198,9 +242,11 @@ export default function ConvoyDashboard() {
           members={members}
           satOn={satOn}
           userPosition={userPosition}
-          onUserMoved={() => undefined}
+          onUserMoved={handleUserMoved}
           resetSignal={resetSignal}
           panSignal={panSignal}
+          onMapReady={handleMapReady}
+          onZoomChange={handleZoomChange}
         />
 
         <div className="map-overlay-top">
@@ -214,15 +260,21 @@ export default function ConvoyDashboard() {
         <MapControls
           satOn={satOn}
           onToggleSat={() => setSatOn((v) => !v)}
-          onRecenter={() => {
-            setPanSignal((v) => v + 1)
-            showToast(userPosition ? 'Recentered on your position' : 'Your position is unknown — showing the default view')
-          }}
-          onResetView={() => {
-            setResetSignal((v) => v + 1)
-          }}
+          onRecenter={handleRecenter}
+          onResetView={handleResetView}
           trip={trip}
+          onZoomIn={zoomIn}
+          onZoomOut={zoomOut}
+          zoom={zoom}
+          minZoom={minZoom}
+          maxZoom={maxZoom}
         />
+
+        {mapPaused ? (
+          <button type="button" className="map-paused-chip" onClick={handleRecenter} title="Tap to follow your position again">
+            ⏸ Map paused — tap ◎ to follow
+          </button>
+        ) : null}
 
         <div className="speed-cluster">
           <div className="gauge-wrap">
