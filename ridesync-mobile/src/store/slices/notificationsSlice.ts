@@ -1,11 +1,12 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { NOTIFICATIONS } from '../../data/mockData';
+import { NotificationItem } from '../../data/mockData';
 
 export interface NotificationsState {
-  items: typeof NOTIFICATIONS;
+  /** Notifications on this device only, starting empty — no seeded notifications. */
+  items: NotificationItem[];
 }
 
-const initialState: NotificationsState = { items: NOTIFICATIONS };
+const initialState: NotificationsState = { items: [] };
 
 const notificationsSlice = createSlice({
   name: 'notifications',
@@ -17,7 +18,7 @@ const notificationsSlice = createSlice({
     markRead(state, action: PayloadAction<string>) {
       state.items = state.items.map((n) => (n.id === action.payload ? { ...n, unread: false } : n));
     },
-    addNotification(state, action: PayloadAction<(typeof NOTIFICATIONS)[number]>) {
+    addNotification(state, action: PayloadAction<NotificationItem>) {
       state.items = [action.payload, ...state.items];
     },
   },

@@ -1,7 +1,19 @@
 /**
- * Shared mock data — MUST match the web app / HTML prototype exactly.
- * Do not invent different data. All of this is labelled MOCK in the README
- * and is replaced by the real Node.js + MongoDB backend (see socket/ and api/).
+ * Shared data types + pure helpers for the mobile app.
+ *
+ * FAKE DATA REMOVED (2026-11-26): this file used to seed a fake trip
+ * ("Manali Mountain Convoy", Bhopal → Manali, 612 km, 12 riders, code
+ * A1B2C9), five fake riders (Rohit Verma, Ananya Kapoor, Puneet Sharma,
+ * Tanya Mehra, Sameer Khan), fake stats (47 rides / 3,140 km / 98%
+ * safety), fake chat, alerts, notifications and nearby trips. All of it
+ * was deleted. Nothing in this file is a seeded value any more — only
+ * types and pure functions. Real data is created by the user on this
+ * device (a trip they create, a message they send) and lives in Redux
+ * for the session; the rider's own position and speed are real GPS.
+ *
+ * MAP_CENTER is the one exception to "no seeded values": it is a neutral
+ * default map view (India-wide) used ONLY while there is no GPS fix. It
+ * is never presented as a trip location or a rider position.
  */
 
 export type MemberStatus = 'online' | 'stopped' | 'offline';
@@ -14,7 +26,6 @@ export interface Member {
   status: MemberStatus;
   speedKmh: number | null;
   position: string;
-  /** Offset from the convoy centre (Bhopal) in degrees — drives the map markers. */
   lat: number;
   lng: number;
 }
@@ -36,66 +47,118 @@ export interface AlertItem {
   time: string;
 }
 
-export const TRIP = {
-  id: 'trip-manali-001',
-  name: 'Manali Mountain Convoy',
-  origin: 'Bhopal',
-  destination: 'Manali',
-  distanceKm: 612,
-  riderCount: 12,
-  vehicleCount: 3,
-  type: 'Public' as const,
-  startsInMinutes: 24,
-  date: '2026-07-25',
-  startTime: '06:00',
-  code: 'A1B2C9',
-  inviteLink: 'https://ridesync.app/join/A1B2C9',
-} as const;
+export interface NotificationItem {
+  id: string;
+  title: string;
+  body: string;
+  time: string;
+  unread: boolean;
+  kind: 'warning' | 'weather' | 'info';
+}
 
-export const RIDER_STATS = {
-  totalRides: 47,
-  kmLogged: 3140,
-  safetyScore: 98,
-} as const;
+/** A trip created on this device. `distanceKm` is null until estimated. */
+export interface Trip {
+  id: string;
+  name: string;
+  origin: string;
+  destination: string;
+  distanceKm: number | null;
+  riderLimit: number;
+  type: 'Public' | 'Private';
+  /** YYYY-MM-DD */
+  date: string;
+  /** HH:MM (24h) */
+  startTime: string;
+  code: string;
+  inviteLink: string;
+  leaderName: string;
+}
 
-export const CURRENT_USER = {
-  id: 'me',
-  name: 'Sameer Khan',
-  initials: 'SK',
-  email: 'sameer.khan@example.com',
-  bike: 'Royal Enfield Himalayan 450',
-} as const;
-
-/** Bhopal centre — same coordinates as the HTML prototype's Leaflet map. */
+/** Neutral default map view (India) — used ONLY while there is no GPS fix. */
 export const MAP_CENTER = { latitude: 23.2599, longitude: 77.4126 };
 
-export const MEMBERS: Member[] = [
-  { id: 'rohit', name: 'Rohit Verma', initials: 'RV', role: 'leader', status: 'online', speedKmh: 58, position: '1.2 km ahead', lat: 23.2639, lng: 77.4186 },
-  { id: 'ananya', name: 'Ananya Kapoor', initials: 'AK', role: 'rider', status: 'online', speedKmh: 61, position: '300m ahead', lat: 23.2579, lng: 77.4156 },
-  { id: 'puneet', name: 'Puneet Sharma', initials: 'PS', role: 'rider', status: 'stopped', speedKmh: null, position: 'Stopped · fuel station, 2 min', lat: 23.2609, lng: 77.4086 },
-  { id: 'tanya', name: 'Tanya Mehra', initials: 'TM', role: 'rider', status: 'online', speedKmh: 60, position: 'alongside you', lat: 23.2549, lng: 77.4116 },
-  { id: 'sameer', name: 'Sameer Khan', initials: 'SK', role: 'rider', status: 'offline', speedKmh: null, position: 'Offline · last seen 4 min ago', lat: 23.2599, lng: 77.4126 },
-];
+/** Trip codes are 6 uppercase letters/digits, e.g. K7M2P9. */
+export const CODE_RE = /^[A-Z0-9]{6}$/;
 
-export const CHAT_MESSAGES: ChatMessage[] = [
-  { id: 'm1', author: 'Rohit Verma', initials: 'RV', isLeader: true, text: 'Fuel stop in 5 km, regroup at the dhaba', time: '06:12' },
-  { id: 'm2', author: 'Ananya Kapoor', initials: 'AK', isLeader: false, text: 'Copy that, riding steady', time: '06:13' },
-  { id: 'm3', author: 'Tanya Mehra', initials: 'TM', isLeader: false, text: 'Fog near the ghat section, slow down', time: '06:15' },
-];
+/** Generate a new 6-character trip code (no 0/O/1/I, so it reads clearly). */
+export function generateTripCode(): string {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i += 1) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
 
-export const ALERTS: AlertItem[] = [
-  { id: 'a1', title: 'Puneet stopped moving', detail: 'Stationary for 2 minutes near KM 214', kind: 'warning', time: '2 min ago' },
-  { id: 'a2', title: 'Weather alert', detail: 'Reduced visibility ahead, ride cautiously', kind: 'weather', time: '5 min ago' },
-];
+/** Canonical invite link for a trip code. */
+export function buildInviteLink(code: string): string {
+  return `https://ridesync.app/join/${code.toUpperCase()}`;
+}
 
-export const NEARBY_TRIPS = [
-  { id: 'n1', name: 'Bhopal Bikers Sunday Loop', distance: '1.2 km away', riders: 8 },
-  { id: 'n2', name: 'Highway Cruisers – Indore Run', distance: '4.6 km away', riders: 15 },
-];
+/** Copyable text: link + code, so a rider who only gets the code can still join by hand. */
+export function buildInviteText(trip: { name: string; code: string }): string {
+  return `Join ${trip.name} on RideSync: ${buildInviteLink(trip.code)} (code ${trip.code.toUpperCase()})`;
+}
 
-export const NOTIFICATIONS = [
-  { id: 'n1', title: 'Puneet stopped moving', body: 'Stationary for 2 minutes near KM 214', time: '2 min ago', unread: true, kind: 'warning' as const },
-  { id: 'n2', title: 'Weather alert — fog ahead', body: 'Reduced visibility near the ghat section', time: '5 min ago', unread: true, kind: 'weather' as const },
-  { id: 'n3', title: 'Manali Mountain Convoy starts soon', body: 'Starts in 24 min · Bhopal → Manali, 612 km', time: '18 min ago', unread: true, kind: 'info' as const },
-  { id: 'n4', title: 'Ananya joined the convoy', body: '12 riders are now in the Manali Mountain Convoy', time: '1 hr ago', unread: false, kind: 'info' as const },
-];
+export type ParsedInvite = { ok: true; code: string } | { ok: false; error: string };
+
+/**
+ * Pull a trip code out of whatever the rider pasted. Accepts a bare code
+ * (`K7M2P9`), a full link (`https://ridesync.app/join/K7M2P9` or
+ * `…/trips/join?code=K7M2P9`), or a bare path. Anything else is an error,
+ * never a silent join.
+ */
+export function parseInviteCode(raw: string): ParsedInvite {
+  const value = raw.trim();
+  if (!value) return { ok: false, error: 'Enter a trip code or paste an invite link.' };
+  const bare = value.toUpperCase();
+  if (CODE_RE.test(bare)) return { ok: true, code: bare };
+
+  let url: URL;
+  try {
+    url = new URL(value.startsWith('/') ? `https://ridesync.app${value}` : value);
+  } catch {
+    return { ok: false, error: 'That does not look like a RideSync invite link or a trip code.' };
+  }
+  const fromQuery = (url.searchParams.get('code') ?? '').trim().toUpperCase();
+  if (fromQuery) {
+    if (CODE_RE.test(fromQuery)) return { ok: true, code: fromQuery };
+    return { ok: false, error: `The link carries code “${fromQuery}”, which is not a valid 6-character trip code.` };
+  }
+  const segments = url.pathname.split('/').filter(Boolean);
+  const last = (segments[segments.length - 1] ?? '').toUpperCase();
+  if (CODE_RE.test(last)) return { ok: true, code: last };
+  return { ok: false, error: 'That link has no trip code in it. Check the link and try again.' };
+}
+
+/** Initials from a typed name, e.g. "Harshit Raj" → "HR". */
+export function initialsFor(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  const first = parts[0][0] ?? '';
+  const second = parts.length > 1 ? parts[parts.length - 1][0] ?? '' : '';
+  return (first + second).toUpperCase();
+}
+
+/** A display name derived from a typed email, e.g. "harshit.raj@…" → "Harshit Raj". */
+export function nameFromEmail(email: string): string {
+  const local = email.trim().split('@')[0] ?? '';
+  const words = local.split(/[._-]+/).filter(Boolean);
+  if (words.length === 0) return 'Rider';
+  return words.map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+}
+
+/**
+ * Countdown label counted from the trip's own date + start time, e.g.
+ * "Starts in 24 min", "Starts in 2h 15m", "Starts 2026-07-25 06:00",
+ * or "Start time passed".
+ */
+export function startsInLabel(trip: { date: string; startTime: string }): string {
+  const start = new Date(`${trip.date}T${trip.startTime}:00`);
+  if (Number.isNaN(start.getTime())) return `Starts ${trip.date} ${trip.startTime}`;
+  const mins = Math.round((start.getTime() - Date.now()) / 60000);
+  if (mins < 0) return 'Start time passed';
+  if (mins < 60) return `Starts in ${mins} min`;
+  if (mins < 60 * 24) return `Starts in ${Math.floor(mins / 60)}h ${mins % 60}m`;
+  return `Starts ${trip.date} ${trip.startTime}`;
+}

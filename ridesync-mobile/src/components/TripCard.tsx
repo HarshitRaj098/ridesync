@@ -1,32 +1,33 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../theme/colors';
-import { TRIP } from '../data/mockData';
+import { startsInLabel, Trip } from '../data/mockData';
 
-export function TripCard({ onPress }: { onPress?: () => void }) {
+export function TripCard({ trip, onPress }: { trip: Trip; onPress?: () => void }) {
   return (
     <Pressable onPress={onPress} style={styles.card}>
       <View style={styles.top}>
         <View style={styles.pill}>
           <View style={styles.dot} />
-          <Text style={styles.pillText}>Starts in {TRIP.startsInMinutes} min</Text>
+          <Text style={styles.pillText}>{startsInLabel(trip)}</Text>
         </View>
       </View>
-      <Text style={styles.title}>{TRIP.name}</Text>
+      <Text style={styles.title}>{trip.name}</Text>
       <Text style={styles.route}>
-        {TRIP.origin} → {TRIP.destination} · {TRIP.distanceKm} km
+        {trip.origin} → {trip.destination}
+        {trip.distanceKm !== null ? ` · ${trip.distanceKm} km` : ' · distance not estimated yet'}
       </Text>
       <View style={styles.stats}>
         <View style={styles.stat}>
-          <Text style={styles.statValue}>{TRIP.riderCount}</Text>
-          <Text style={styles.statLabel}>Riders</Text>
+          <Text style={styles.statValue}>{trip.riderLimit}</Text>
+          <Text style={styles.statLabel}>Rider Limit</Text>
         </View>
         <View style={styles.stat}>
-          <Text style={styles.statValue}>{TRIP.vehicleCount}</Text>
-          <Text style={styles.statLabel}>Vehicles</Text>
+          <Text style={styles.statValue}>{trip.code}</Text>
+          <Text style={styles.statLabel}>Code</Text>
         </View>
         <View style={styles.stat}>
-          <Text style={styles.statValue}>{TRIP.type}</Text>
+          <Text style={styles.statValue}>{trip.type}</Text>
           <Text style={styles.statLabel}>Type</Text>
         </View>
       </View>

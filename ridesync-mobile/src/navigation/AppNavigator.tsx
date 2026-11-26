@@ -55,7 +55,8 @@ export function AppNavigator() {
   const isAuthenticated = useAppSelector((s) => s.auth.isAuthenticated);
   const [splashDone, setSplashDone] = useState(false);
 
-  // Start the (mock) socket when the app mounts; disconnect on unmount.
+  // Connect the socket when the app mounts; disconnect on unmount.
+  // Without EXPO_PUBLIC_USE_REAL_SOCKET=1 this is a no-op (no simulated socket).
   useEffect(() => {
     socketService.connect();
     return () => socketService.disconnect();

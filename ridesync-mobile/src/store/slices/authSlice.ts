@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { CURRENT_USER } from '../../data/mockData';
+import { initialsFor } from '../../data/mockData';
 
 export interface AuthState {
   isAuthenticated: boolean;
@@ -20,14 +20,20 @@ const authSlice = createSlice({
     setMode(state, action: PayloadAction<'login' | 'register'>) {
       state.mode = action.payload;
     },
-    /** Mock sign-in — TODO: replace with api/authService + real JWT. */
+    /**
+     * Local sign-in — there is no backend yet, so the signed-in user is
+     * whoever the user typed in (name + email), stored only on this
+     * device for this session. No fake person is ever substituted.
+     * TODO: replace with api/authService + real JWT.
+     */
     signIn(state, action: PayloadAction<{ name: string; email: string }>) {
+      const name = action.payload.name.trim();
       state.isAuthenticated = true;
       state.user = {
-        id: CURRENT_USER.id,
-        name: action.payload.name || CURRENT_USER.name,
-        initials: CURRENT_USER.initials,
-        email: action.payload.email,
+        id: 'local-user',
+        name,
+        initials: initialsFor(name),
+        email: action.payload.email.trim(),
       };
     },
     signOut(state) {

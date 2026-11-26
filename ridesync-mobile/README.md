@@ -3,42 +3,58 @@
 Smart Convoy Management Platform for group travel: live map, trip management,
 leader controls, group chat, voice, SOS and notifications.
 
-> **Mock build.** Most data in this app is mock/simulated — the Manali Mountain
-> Convoy, members, chat, alerts and stats are hard-coded in
-> `src/data/mockData.ts` and member movement is simulated on a timer
-> (`src/hooks/useRideTimer.ts` + `src/socket/socketService.ts`). The
-> exception is your own position on the Convoy Dashboard: that is real
-> GPS via `expo-location` (`src/services/locationService.ts` +
+> **No fake data.** Since 2026-11-26 this app shows no seeded trip,
+> riders, chat, alerts or stats — every screen starts empty and only
+> real local data appears (see "Fake data — removed" below). Your own
+> position and speed on the Convoy Dashboard are real GPS via
+> `expo-location` (`src/services/locationService.ts` +
 > `src/hooks/useUserLocation.ts`). There is no real backend, no real
 > accounts, and no real API key in this repo.
 
 ## Screens (11)
 
-1. **Splash** — GPS / internet / session checks, auto-advances (~2.6s)
-2. **Login / Register** — mock auth (any email + password works; "Continue as Guest" too)
-3. **Home Dashboard** — hero, quick actions, upcoming trip card, rider stats
-4. **Create Trip** — name, destination, date/time, type, rider stepper, invite QR/code
-5. **Join Trip** — trip code, QR scan (device only), invite link, nearby trips
-6. **Trip Lobby** — pre-ride waiting room with rider list and invite link
-7. **Convoy Dashboard** (core) — live map with leader/member markers + route,
-   speed gauge + ETA, bottom sheet with Members / Chat / Alerts, SOS + Push-to-Talk
-8. **Leader Dashboard** — ride health score, online/offline/stopped/separated
-   riders, regroup, broadcast, end trip, analytics
-9. **Notifications** — alerts with unread badges, mark-all-read
-10. **Profile** — rider stats via React Query (mock fetch)
-11. **Settings** — dark theme, notifications, location sharing, voice, units
+1. **Splash** — auto-advances (~2.6s)
+2. **Login / Register** — local sign-in only (any email + password works; "Continue as Guest" too). No backend, no real account.
+3. **Home Dashboard** — hero, quick actions, your trip (or "No trips yet"), real local ride totals (0 until a ride is completed)
+4. **Create Trip** — name, from, destination, date/time, type, rider limit, real generated invite code + link
+5. **Join Trip** — trip code or invite link; joins the trip on this device, blank/wrong codes rejected inline
+6. **Trip Lobby** — pre-ride waiting room for the real trip on this device ("Trip not found" when there is none)
+7. **Convoy Dashboard** (core) — live map following your real GPS, speed gauge (GPS speed or 0), bottom sheet with Members / Chat / Alerts, SOS + Push-to-Talk
+8. **Leader Dashboard** — ride health / average speed ("—" until a real ride), regroup, broadcast, end trip, analytics
+9. **Notifications** — starts empty; mark-all-read
+10. **Profile** — the signed-in user + real local ride totals
+11. **Settings** — notifications, location sharing, voice, units
 
-## Mock data (shared with the web app and HTML prototype)
+## Fake data — removed (2026-11-26)
 
-- **Manali Mountain Convoy**, Bhopal → Manali, **612 km**, **12 riders**,
-  starts in 24 min, 2026-07-25 06:00, invite code `A1B2C9`
-- Members: Rohit Verma (Leader, 58 km/h, 1.2 km ahead), Ananya Kapoor
-  (61 km/h, 300m ahead), Puneet Sharma (Stopped, fuel station, 2 min),
-  Tanya Mehra (60 km/h, alongside), Sameer Khan (Offline, last seen 4 min ago)
-- Chat: Rohit "Fuel stop in 5 km, regroup at the dhaba", Ananya "Copy that,
-  riding steady", Tanya "Fog near the ghat section, slow down"
-- Alerts: Puneet stopped 2 min near KM 214; weather/fog reduced visibility
-- Stats: 47 total rides, 3,140 km logged, 98% safety score
+The seeded data that used to live in `src/data/mockData.ts` was deleted in
+full: the "Manali Mountain Convoy" trip (Bhopal → Manali, 612 km, 12 riders,
+code `A1B2C9`), the five named riders (Rohit Verma, Ananya Kapoor, Puneet
+Sharma, Tanya Mehra, Sameer Khan), the 47 rides / 3,140 km / 98% stats, the
+seeded chat, alerts, notifications and nearby trips, and the fake "Sameer
+Khan" signed-in user. `src/data/mockData.ts` now holds only types and pure
+helpers (trip-code generation, invite links, countdown labels).
+
+**What is real now:**
+- Your own position and speed on the Convoy map — real GPS (`expo-location`).
+- Trips you create: name / from / to / date / time / rider limit, with a real
+  generated 6-character code and invite link. A trip lives in Redux for the
+  session only — there is no persistence (no AsyncStorage), so a trip created
+  in one session is gone when the app restarts.
+- Join by code or invite link, against the trip on this device.
+- Chat, broadcast, regroup and end-trip actions on the real trip (chat and
+  notifications on this device only).
+- Ride totals: +1 ride when a trip is actually ended on this device.
+
+**What is still mock (no backend yet):**
+- Local sign-in (any email + password; details stored only on this device).
+- SOS is shown on this device only — nobody is messaged.
+- Voice (push-to-talk) is not connected.
+- Members, chat, alerts and notifications exist only on this device;
+  nothing is shared with other riders until the backend is live.
+- The simulated socket is gone: `socketService.connect()` is a no-op
+  without `EXPO_PUBLIC_USE_REAL_SOCKET=1`, and the ride clock only runs
+  while a real trip is live.
 
 ## Tech stack
 
@@ -97,16 +113,15 @@ npm run typecheck   # tsc --noEmit
   iOS uses Apple Maps by default and needs no key.
 - Location permission is requested by `expo-location` on the Convoy
   Dashboard: the map follows the rider's **real GPS position** (watch,
-  recenter/north-up, real GPS speed on the gauge). Convoy members, chat,
-  alerts and the simulated ride timer are still mock — only your own
-  position and speed are real. If permission is denied the map shows a
-  banner instead of pretending; if location sharing is off in Settings,
-  GPS stays off.
+  recenter/north-up, real GPS speed on the gauge). If permission is denied
+  the map shows a banner instead of pretending; if location sharing is off
+  in Settings, GPS stays off. With no GPS fix yet, the map shows a neutral
+  default view and a "No GPS fix yet" chip — never a fake position.
 
 ## Connecting the real backend
 
 The backend now exists in this repo: `../ridesync-server/` (Node.js +
-Express + Socket.IO + MongoDB, JWT auth, seeded Manali convoy, demo login
+Express + Socket.IO + MongoDB, JWT auth, demo login
 `demo@ridesync.app` / `ridesync123`). To use it:
 
 1. Run the server locally (`cd ../ridesync-server && npm install && npm run dev`, localhost:4000) or deploy it (see its README for Render + Atlas).
@@ -132,12 +147,12 @@ App.tsx                  Entry (Redux + React Query providers)
 app.json                 Expo config (incl. Google Maps API key placeholder)
 src/
   theme/                 colors (#007BFF / #00C2FF / #080B12…), typography
-  data/mockData.ts       Shared mock trip / members / chat / alerts / stats
+  data/mockData.ts       Types + pure helpers only (fake data removed 2026-11-26)
   store/                 Redux Toolkit: auth, trip, members, notifications, settings
   api/client.ts          API client stub (TODO: real backend URL)
-  services/              Mock auth / trip / profile services
-  socket/socketService.ts Simulated socket + real socket.io-client wiring (TODO)
-  hooks/                 useAppStore, useRideTimer (simulated live tick)
+  services/              Local auth / trip services (TODO: real backend)
+  socket/socketService.ts Socket.io-client wiring (no-op without a real backend)
+  hooks/                 useAppStore, useRideTimer (real ride clock), useUserLocation (real GPS)
   components/            PrimaryButton, InputField, TripCard, MemberCard,
                          StatusBadge, SOSButton, VoiceButton, MapControls,
                          GlassCard, NotificationCard, AppHeader, ConvoyMap,
@@ -151,7 +166,11 @@ src/
 
 - **Not tested on a phone.** This build was typechecked in this workspace
   (see typecheck result in the build report); no device or emulator test
-  was run here.
+  was run here. The GPS follow / recenter / share / permission-banner
+  behaviour needs Expo Go on a real phone to verify.
+- **Trips are session-only.** A trip created in the app disappears when
+  the app restarts (no AsyncStorage yet). Join-by-code only works for the
+  trip on the same device.
 - **Poppins font is not bundled** — no font files were supplied, so the app
   uses the system font. Drop Poppins `.ttf` files into
   `src/assets/fonts/` and load them with `expo-font` to match the design

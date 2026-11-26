@@ -3,7 +3,7 @@ import { Alert, Linking, Modal, Pressable, ScrollView, Share, StyleSheet, Text, 
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../theme/colors';
-import { TRIP } from '../data/mockData';
+import { buildInviteText, Member } from '../data/mockData';
 import { useAppDispatch, useAppSelector } from '../hooks/useAppStore';
 import { useRideTimer } from '../hooks/useRideTimer';
 import { useUserLocation } from '../hooks/useUserLocation';
@@ -23,17 +23,19 @@ type Tab = 'members' | 'chat' | 'alerts';
 
 /**
  * Screen 7 — Convoy Dashboard (the core screen).
- * Live map with leader/member markers + route, speed + ETA, bottom sheet
- * with Members / Chat / Alerts, SOS and Push-to-Talk.
  * The map follows the rider's REAL GPS position (expo-location) — recenter
- * and speed are live. Members, chat and alerts are still simulated
- * (useRideTimer + socketService mock); see README.
+ * and speed are live. There is no seeded trip, no seeded members and no
+ * fake ETA: with no trip this screen says so, and with a trip the map
+ * shows only your own position until other riders join on this device.
+ * Chat and alerts start empty; SOS is shown on this device only.
  */
 export function ConvoyDashboardScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const dispatch = useAppDispatch();
-  const { members, chat, alerts, speedKmh, rideSeconds, sosActive, voiceActive } = useAppSelector((s) => s.members);
+  const { members, chat, alerts, rideSeconds, sosActive, voiceActive } = useAppSelector((s) => s.members);
   const { locationSharing } = useAppSelector((s) => s.settings);
+  const currentTrip = useAppSelector((s) => s.trip.currentTrip);
+  const user = useAppSelector((s) => s.auth.user);
   const [tab, setTab] = useState<Tab>('members');
   const [sheetExpanded, setSheetExpanded] = useState(false);
   const [satellite, setSatellite] = useState(false);
@@ -42,7 +44,8 @@ export function ConvoyDashboardScreen() {
   const [following, setFollowing] = useState(true);
   const mapRef = useRef<ConvoyMapHandle | null>(null);
 
-  useRideTimer(true);
+  // The ride clock only runs while a real trip is live.
+  useRideTimer(currentTrip !== null);
   const {
     coords: userCoords,
     status: gpsStatus,
@@ -51,13 +54,25 @@ export function ConvoyDashboardScreen() {
     requestAgain,
   } = useUserLocation(locationSharing);
 
-  const remainingKm = Math.max(0, TRIP.distanceKm - Math.floor(rideSeconds / 60) * 1);
-  const etaMin = speedKmh > 0 ? Math.round((remainingKm / speedKmh) * 60) : 0;
-
-  // Speed on the gauge: real GPS speed when the device reports one,
-  // otherwise the simulated convoy speed (labelled honestly below it).
-  const displaySpeed = gpsSpeedKmh ?? speedKmh;
+  // Speed on the gauge: real GPS speed when the device reports one, else 0.
+  // No simulated speed any more — a ride that never happened has no speed.
+  const displaySpeed = gpsSpeedKmh ?? 0;
   const speedIsGps = gpsSpeedKmh != null;
+
+  const isLeader = !!currentTrip && !!user && currentTrip.leaderName === user.name;
+
+  /** "You" as the one real member of this convoy, from live GPS only. */
+  const youMember: Member = {
+    id: 'you',
+    name: user?.name ?? 'You',
+    initials: user?.initials ?? 'Y',
+    role: isLeader ? 'leader' : 'rider',
+    status: 'online',
+    speedKmh: gpsSpeedKmh,
+    position: userCoords ? 'You · live GPS' : 'You · no GPS fix yet',
+    lat: userCoords?.latitude ?? 0,
+    lng: userCoords?.longitude ?? 0,
+  };
 
   /** Recenter on the rider's live position, north-up, and resume following. */
   function handleRecenter() {
@@ -65,11 +80,11 @@ export function ConvoyDashboardScreen() {
     mapRef.current?.recenterToUser();
   }
 
-  /** Share the real local trip invite (name + code) with the system sheet. */
+  /** Share the real trip's invite with the system sheet. Only rendered when a trip exists. */
   async function handleShare() {
-    const message = `Join my RideSync trip "${TRIP.name}" (${TRIP.origin} → ${TRIP.destination}) with code ${TRIP.code}.`;
+    if (!currentTrip) return;
     try {
-      await Share.share({ message });
+      await Share.share({ message: buildInviteText(currentTrip) });
     } catch {
       Alert.alert('Share failed', 'The invite could not be shared. Try again.');
     }
@@ -100,13 +115,34 @@ export function ConvoyDashboardScreen() {
   function confirmSos() {
     setSosModal(false);
     dispatch(setSos(true));
-    Alert.alert('🚨 SOS broadcast', 'Your live location was broadcast to the convoy leader, emergency contacts and nearby riders (mock).');
+    Alert.alert(
+      'SOS shown on this device',
+      'Nobody was messaged. Real SOS delivery to your leader and emergency contacts arrives with the backend.',
+    );
   }
 
   function sendMessage() {
-    if (!draft.trim()) return;
-    dispatch(sendChat({ text: draft.trim() }));
+    if (!draft.trim() || !user) return;
+    dispatch(sendChat({ text: draft.trim(), author: user.name, initials: user.initials, isLeader }));
     setDraft('');
+  }
+
+  if (!currentTrip) {
+    return (
+      <View style={styles.root}>
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyTitle}>No trip selected</Text>
+          <Text style={styles.emptyText}>
+            There is no trip on this device yet. Create a trip or join one with an invite code, then come back here to
+            ride with live GPS.
+          </Text>
+          <View style={{ height: 14 }} />
+          <PrimaryButton title="Create a Trip" onPress={() => navigation.navigate('CreateTrip')} />
+          <View style={{ height: 10 }} />
+          <PrimaryButton title="Join a Trip" onPress={() => navigation.navigate('JoinTrip')} />
+        </View>
+      </View>
+    );
   }
 
   return (
@@ -149,6 +185,12 @@ export function ConvoyDashboardScreen() {
           </View>
         )}
 
+        {!userCoords && gpsStatus !== 'denied' ? (
+          <View style={styles.noFixChip}>
+            <Text style={styles.noFixText}>No GPS fix yet</Text>
+          </View>
+        ) : null}
+
         <View style={styles.sideControls}>
           <MapControls
             satellite={satellite}
@@ -161,16 +203,15 @@ export function ConvoyDashboardScreen() {
         <View style={styles.gaugeWrap}>
           <SpeedGauge speedKmh={displaySpeed} />
           <Text style={[styles.speedSource, speedIsGps && styles.speedSourceGps]}>
-            {speedIsGps ? 'GPS speed' : 'Simulated speed'}
+            {speedIsGps ? 'GPS speed' : 'No GPS fix yet'}
           </Text>
-          <Text style={styles.eta}>ETA {Math.floor(etaMin / 60)}h {etaMin % 60}m · {remainingKm} km left</Text>
         </View>
 
         <View style={styles.fabRow}>
           <VoiceButton active={voiceActive} onPress={() => dispatch(setVoice(!voiceActive))} />
           <SOSButton active={sosActive} onPress={() => setSosModal(true)} />
         </View>
-        {voiceActive && <Text style={styles.voiceNote}>Push-to-talk live — hold to speak (mock)</Text>}
+        {voiceActive && <Text style={styles.voiceNote}>Voice is not connected yet — group voice arrives with the backend</Text>}
       </View>
 
       <View style={[styles.sheet, sheetExpanded && styles.sheetExpanded]}>
@@ -179,38 +220,58 @@ export function ConvoyDashboardScreen() {
           {(['members', 'chat', 'alerts'] as Tab[]).map((t) => (
             <Pressable key={t} onPress={() => { setTab(t); setSheetExpanded(true); }} style={[styles.tab, tab === t && styles.tabActive]}>
               <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
-                {t === 'members' ? `Members · ${TRIP.riderCount}` : t === 'chat' ? 'Chat' : `Alerts · ${alerts.length}`}
+                {t === 'members' ? `Members · ${members.length + 1}` : t === 'chat' ? 'Chat' : `Alerts · ${alerts.length}`}
               </Text>
             </Pressable>
           ))}
         </View>
 
         <ScrollView style={styles.sheetBody}>
-          {tab === 'members' && members.map((m) => <MemberCard key={m.id} member={m} />)}
+          {tab === 'members' && (
+            <>
+              <MemberCard member={youMember} />
+              {members.map((m) => (
+                <MemberCard key={m.id} member={m} />
+              ))}
+              {members.length === 0 && (
+                <Text style={styles.emptyNote}>
+                  No other riders in this convoy yet — share the invite link so riders can join on this device.
+                </Text>
+              )}
+            </>
+          )}
           {tab === 'chat' &&
-            chat.map((msg) => (
-              <View key={msg.id} style={styles.chatMsg}>
-                <View style={styles.chatAvatar}>
-                  <Text style={styles.chatInitials}>{msg.initials}</Text>
+            (chat.length === 0 ? (
+              <Text style={styles.emptyNote}>No messages yet — say hello to the convoy.</Text>
+            ) : (
+              chat.map((msg) => (
+                <View key={msg.id} style={styles.chatMsg}>
+                  <View style={styles.chatAvatar}>
+                    <Text style={styles.chatInitials}>{msg.initials}</Text>
+                  </View>
+                  <View>
+                    <Text style={styles.chatAuthor}>
+                      {msg.author}
+                      {msg.isLeader ? ' (Leader)' : ''}
+                    </Text>
+                    <Text style={styles.chatText}>{msg.text}</Text>
+                  </View>
                 </View>
-                <View>
-                  <Text style={styles.chatAuthor}>
-                    {msg.author}
-                    {msg.isLeader ? ' (Leader)' : ''}
-                  </Text>
-                  <Text style={styles.chatText}>{msg.text}</Text>
-                </View>
-              </View>
+              ))
             ))}
           {tab === 'alerts' &&
-            alerts.map((a) => (
-              <View key={a.id} style={styles.alertRow}>
-                <Text style={styles.alertIcon}>⚠</Text>
-                <View>
-                  <Text style={styles.alertTitle}>{a.title}</Text>
-                  <Text style={styles.alertDetail}>{a.detail}</Text>
+            (alerts.length === 0 ? (
+              <Text style={styles.emptyNote}>No alerts yet.</Text>
+            ) : (
+              alerts.map((a) => (
+                <View key={a.id} style={styles.alertRow}>
+                  <Text style={styles.alertIcon}>⚠</Text>
+                  <View>
+                    <Text style={styles.alertTitle}>{a.title}</Text>
+                    <Text style={styles.alertDetail}>{a.detail}</Text>
+                  </View>
                 </View>
-              </View>
+              ))
             ))}
         </ScrollView>
 
@@ -237,14 +298,15 @@ export function ConvoyDashboardScreen() {
             <Text style={styles.modalIcon}>⚠</Text>
             <Text style={styles.modalTitle}>Send Emergency SOS?</Text>
             <Text style={styles.modalText}>
-              Your live location and vehicle details will be broadcast to your convoy leader, emergency contacts and nearby riders immediately.
+              SOS is shown on this device only for now. Nobody is messaged yet — real SOS delivery to your convoy
+              leader and emergency contacts arrives with the backend.
             </Text>
             <View style={styles.modalActions}>
               <Pressable onPress={() => setSosModal(false)} style={styles.cancelBtn}>
                 <Text style={styles.cancelText}>Cancel</Text>
               </Pressable>
               <Pressable onPress={confirmSos} style={styles.confirmBtn}>
-                <Text style={styles.confirmText}>Send SOS</Text>
+                <Text style={styles.confirmText}>Show SOS</Text>
               </Pressable>
             </View>
           </View>
@@ -270,10 +332,11 @@ const styles = StyleSheet.create({
   gpsBannerText: { color: colors.text, fontSize: 12, lineHeight: 17 },
   gpsBannerBtn: { marginTop: 10, backgroundColor: colors.primary, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
   gpsBannerBtnText: { color: colors.white, fontWeight: '700', fontSize: 13 },
+  noFixChip: { position: 'absolute', top: 104, left: 16, backgroundColor: 'rgba(18,24,38,0.75)', borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 100, paddingHorizontal: 10, paddingVertical: 6 },
+  noFixText: { color: colors.textDim, fontSize: 11, fontWeight: '600' },
   speedSource: { color: colors.textDim, fontSize: 10, fontWeight: '600', textAlign: 'center' },
   speedSourceGps: { color: colors.cyan },
   gaugeWrap: { position: 'absolute', left: 16, bottom: 230, gap: 6 },
-  eta: { color: colors.textDim, fontSize: 11, backgroundColor: 'rgba(18,24,38,0.75)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, overflow: 'hidden' },
   fabRow: { position: 'absolute', left: 16, right: 16, bottom: 220, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   voiceNote: { position: 'absolute', left: 16, bottom: 200, color: colors.cyan, fontSize: 11, fontWeight: '600' },
   sheet: { height: 210, backgroundColor: 'rgba(13,17,28,0.95)', borderTopWidth: 1, borderTopColor: colors.borderStrong, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 8 },
@@ -285,6 +348,7 @@ const styles = StyleSheet.create({
   tabText: { color: colors.textDim, fontSize: 12.5, fontWeight: '600' },
   tabTextActive: { color: colors.text },
   sheetBody: { flex: 1, paddingHorizontal: 16, paddingTop: 6 },
+  emptyNote: { color: colors.textFaint, fontSize: 12.5, lineHeight: 18, textAlign: 'center', marginTop: 24, paddingHorizontal: 12 },
   chatMsg: { flexDirection: 'row', gap: 9, marginBottom: 14 },
   chatAvatar: { width: 30, height: 30, borderRadius: 15, backgroundColor: colors.card2, alignItems: 'center', justifyContent: 'center' },
   chatInitials: { color: colors.cyan, fontSize: 11, fontWeight: '700' },
@@ -307,4 +371,7 @@ const styles = StyleSheet.create({
   cancelText: { color: colors.textDim, fontWeight: '700' },
   confirmBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: colors.danger, alignItems: 'center' },
   confirmText: { color: colors.white, fontWeight: '700' },
+  emptyWrap: { flex: 1, justifyContent: 'center', paddingHorizontal: 20 },
+  emptyTitle: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  emptyText: { color: colors.textDim, fontSize: 13, lineHeight: 19, marginTop: 8 },
 });

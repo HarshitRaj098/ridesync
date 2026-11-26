@@ -10,8 +10,8 @@ export function SettingsScreen() {
   const dispatch = useAppDispatch();
   const settings = useAppSelector((s) => s.settings);
 
-  const rows: { key: 'darkMode' | 'notificationsEnabled' | 'locationSharing' | 'voiceEnabled'; label: string; hint: string }[] = [
-    { key: 'darkMode', label: 'Dark theme', hint: 'RideSync is dark by default' },
+  // No dark-theme row: the app is dark-only, so there is nothing to toggle.
+  const rows: { key: 'notificationsEnabled' | 'locationSharing' | 'voiceEnabled'; label: string; hint: string }[] = [
     { key: 'notificationsEnabled', label: 'Notifications', hint: 'Trip, alert and chat notifications' },
     { key: 'locationSharing', label: 'Share live location', hint: 'Broadcast GPS to your convoy while riding' },
     { key: 'voiceEnabled', label: 'Push-to-talk voice', hint: 'Group voice channel in the convoy' },
@@ -48,10 +48,11 @@ export function SettingsScreen() {
         </View>
 
         <View style={styles.about}>
-          <Text style={styles.aboutTitle}>RideSync · 1.0.0 (mock build)</Text>
+          <Text style={styles.aboutTitle}>RideSync · 1.0.0</Text>
           <Text style={styles.aboutText}>
-            Smart Convoy Management Platform. All data on this build is mock/simulated — no real backend, no real
-            accounts. See README.md for the maps / API-key note and how to point the app at the real Node.js backend.
+            Smart Convoy Management Platform. Your own position and speed on the Convoy map are real GPS. Trips,
+            members, chat and alerts live only on this device until the real backend is connected — no fake data is
+            shown. See README.md for the maps / API-key note and how to point the app at the real Node.js backend.
           </Text>
         </View>
       </View>

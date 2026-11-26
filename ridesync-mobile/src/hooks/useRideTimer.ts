@@ -3,10 +3,10 @@ import { useAppDispatch } from './useAppStore';
 import { tick } from '../store/slices/membersSlice';
 
 /**
- * Simulated live ride: every second advances the ride timer and jitters
- * speed / member positions, mirroring the HTML prototype's setInterval mocks.
- * In production this is driven by socketService location:update events
- * (GPS -> Socket -> Redux -> UI).
+ * Ride clock: every second advances `rideSeconds` by one while a real
+ * trip is live (`active`). It moves nothing else — no member movement,
+ * no fake speed. In production this is driven by socketService
+ * location:update events (GPS -> Socket -> Redux -> UI).
  */
 export function useRideTimer(active: boolean) {
   const dispatch = useAppDispatch();

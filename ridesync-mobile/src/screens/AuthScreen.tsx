@@ -9,7 +9,12 @@ import { PasswordField } from '../components/PasswordField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SecondaryButton } from '../components/SecondaryButton';
 
-/** Screen 2 — Login / Register (mock auth; TODO: real JWT via api/authService). */
+/**
+ * Screen 2 — Login / Register.
+ * Local sign-in only: no backend is configured, so the user signs in
+ * with whatever name/email they type, stored only on this device for
+ * this session. No example credentials, no fake person.
+ */
 export function AuthScreen() {
   const dispatch = useAppDispatch();
   const mode = useAppSelector((s) => s.auth.mode);
@@ -31,7 +36,7 @@ export function AuthScreen() {
           : await authService.register(name, email, password);
       dispatch(signIn({ name: user.name, email: user.email }));
     } catch {
-      Alert.alert('Sign-in failed', 'Mock auth failed — please try again.');
+      Alert.alert('Sign-in failed', 'Local sign-in failed — please try again.');
     } finally {
       setBusy(false);
     }
@@ -54,14 +59,17 @@ export function AuthScreen() {
         </Pressable>
       </View>
 
-      {mode === 'register' && <InputField label="Full Name" value={name} onChangeText={setName} placeholder="Sameer Khan" autoCapitalize="words" />}
+      {mode === 'register' && <InputField label="Full Name" value={name} onChangeText={setName} placeholder="Your name" autoCapitalize="words" />}
       <InputField label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" />
       <PasswordField label="Password" value={password} onChangeText={setPassword} />
 
       <PrimaryButton title={busy ? 'Please wait…' : mode === 'login' ? 'Login' : 'Create Account'} onPress={submit} disabled={busy} />
       <View style={{ height: 10 }} />
-      <SecondaryButton title="Continue as Guest (mock)" onPress={() => dispatch(signIn({ name: 'Sameer Khan', email: 'guest@ridesync.app' }))} />
-      <Text style={styles.note}>Mock auth only — no real account is created. Real login will use the Node.js backend.</Text>
+      <SecondaryButton title="Continue as Guest" onPress={() => dispatch(signIn({ name: 'Guest', email: 'guest@ridesync.app' }))} />
+      <Text style={styles.note}>
+        No backend configured — sign in with any email and password. Your details are stored only on this device for
+        this session.
+      </Text>
     </ScrollView>
   );
 }

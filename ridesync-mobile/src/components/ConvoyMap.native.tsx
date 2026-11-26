@@ -18,9 +18,10 @@ import { MAP_CENTER, Member } from '../data/mockData';
  *
  * GPS: the map centres on the rider's real position (`userLocation`)
  * when one is known and follows it while `followUser` is true. Member
- * markers are still the mock convoy (no live backend yet) — only members
- * with real coordinates are drawn. Dragging the map by hand calls
- * `onUserMoved` so the screen can pause following.
+ * markers are only drawn for real members with coordinates — the list
+ * starts empty (no seeded riders) and grows only when riders join on
+ * this device. Dragging the map by hand calls `onUserMoved` so the
+ * screen can pause following.
  */
 import MapView, { Marker, Polyline } from 'react-native-maps';
 
@@ -91,7 +92,9 @@ export const ConvoyMap = forwardRef<ConvoyMapHandle, Props>(function ConvoyMap(
       showsCompass={false}
       onPanDrag={onUserMoved}
     >
-      <Polyline coordinates={routeCoords} strokeColor={colors.cyan} strokeWidth={3} lineDashPattern={[1, 10]} />
+      {routeCoords.length >= 2 && (
+        <Polyline coordinates={routeCoords} strokeColor={colors.cyan} strokeWidth={3} lineDashPattern={[1, 10]} />
+      )}
       {visibleMembers.map((m) => (
         <Marker
           key={m.id}

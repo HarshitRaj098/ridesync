@@ -1,17 +1,18 @@
 /**
- * Socket layer — SIMULATED by default.
+ * Socket layer.
  *
- * Real mode (TODO, when the Node.js + MongoDB backend exists):
+ * Real mode (when the Node.js + MongoDB backend exists):
  *   1. Set EXPO_PUBLIC_SOCKET_URL (e.g. http://localhost:5000) and
  *      EXPO_PUBLIC_USE_REAL_SOCKET=1.
  *   2. The service below connects with socket.io-client and subscribes to
  *      `location:update`, `member:join`, `member:left`, `sos`,
  *      `trip:update` and `broadcast` — the exact events from the blueprint.
  *   3. GPS -> Socket -> Redux -> UI: location updates dispatch the same
- *      Redux actions the simulator uses today.
+ *      Redux actions the app uses today.
  *
- * Until then, `startSimulation` emits jittered mock positions on an
- * interval so the Convoy Dashboard moves like the HTML prototype.
+ * Until then, `connect()` does nothing: there is no simulated socket any
+ * more (the old fake location:update ticks were removed with the fake
+ * data on 2026-11-26). No positions are invented.
  */
 import { io, Socket } from 'socket.io-client';
 
@@ -31,13 +32,9 @@ const USE_REAL_SOCKET = process.env.EXPO_PUBLIC_USE_REAL_SOCKET === '1';
 class SocketService {
   private socket: Socket | null = null;
   private listeners = new Map<SocketEvent, Set<Listener>>();
-  private simTimer: ReturnType<typeof setInterval> | null = null;
 
   connect() {
-    if (!USE_REAL_SOCKET) {
-      this.startSimulation();
-      return;
-    }
+    if (!USE_REAL_SOCKET) return;
     this.socket = io(SOCKET_URL, { transports: ['websocket'] });
     this.socket.on('connect', () => console.log('[socket] connected'));
     (['location:update', 'member:join', 'member:left', 'sos', 'trip:update', 'broadcast'] as SocketEvent[]).forEach(
@@ -46,7 +43,6 @@ class SocketService {
   }
 
   disconnect() {
-    this.stopSimulation();
     this.socket?.disconnect();
     this.socket = null;
   }
@@ -63,19 +59,7 @@ class SocketService {
 
   sendSos(location: { latitude: number; longitude: number }) {
     if (this.socket) this.socket.emit('sos', location);
-    else console.log('[socket:MOCK] SOS broadcast', location);
-  }
-
-  private startSimulation() {
-    if (this.simTimer) return;
-    this.simTimer = setInterval(() => {
-      this.emit('location:update', { at: Date.now(), simulated: true });
-    }, 2500);
-  }
-
-  private stopSimulation() {
-    if (this.simTimer) clearInterval(this.simTimer);
-    this.simTimer = null;
+    else console.log('[socket] SOS not sent — no backend connected', location);
   }
 }
 
