@@ -3,11 +3,14 @@
 Smart Convoy Management Platform for group travel: live map, trip management,
 leader controls, group chat, voice, SOS and notifications.
 
-> **Mock build.** All data in this app is mock/simulated — the Manali Mountain
+> **Mock build.** Most data in this app is mock/simulated — the Manali Mountain
 > Convoy, members, chat, alerts and stats are hard-coded in
-> `src/data/mockData.ts` and live movement is simulated on a timer
-> (`src/hooks/useRideTimer.ts` + `src/socket/socketService.ts`). There is no
-> real backend, no real accounts, and no real API key in this repo.
+> `src/data/mockData.ts` and member movement is simulated on a timer
+> (`src/hooks/useRideTimer.ts` + `src/socket/socketService.ts`). The
+> exception is your own position on the Convoy Dashboard: that is real
+> GPS via `expo-location` (`src/services/locationService.ts` +
+> `src/hooks/useUserLocation.ts`). There is no real backend, no real
+> accounts, and no real API key in this repo.
 
 ## Screens (11)
 
@@ -92,8 +95,13 @@ npm run typecheck   # tsc --noEmit
   there, locally, as `expo.android.config.googleMaps.apiKey`, and keep it out
   of the public repo. Do not commit a real key.
   iOS uses Apple Maps by default and needs no key.
-- Location permission is requested by `expo-location`; the app currently
-  simulates movement, so it works without granting it.
+- Location permission is requested by `expo-location` on the Convoy
+  Dashboard: the map follows the rider's **real GPS position** (watch,
+  recenter/north-up, real GPS speed on the gauge). Convoy members, chat,
+  alerts and the simulated ride timer are still mock — only your own
+  position and speed are real. If permission is denied the map shows a
+  banner instead of pretending; if location sharing is off in Settings,
+  GPS stays off.
 
 ## Connecting the real backend
 

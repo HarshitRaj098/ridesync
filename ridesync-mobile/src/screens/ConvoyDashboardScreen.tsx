@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { Alert, Linking, Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../theme/colors';
 import { TRIP } from '../data/mockData';
 import { useAppDispatch, useAppSelector } from '../hooks/useAppStore';
 import { useRideTimer } from '../hooks/useRideTimer';
+import { useUserLocation } from '../hooks/useUserLocation';
 import { sendChat, setSos, setVoice } from '../store/slices/membersSlice';
 import { formatDuration } from '../utils/format';
-import { ConvoyMap } from '../components/ConvoyMap';
+import { ConvoyMap, ConvoyMapHandle } from '../components/ConvoyMap';
 import { SpeedGauge } from '../components/SpeedGauge';
 import { MapControls } from '../components/MapControls';
 import { SOSButton } from '../components/SOSButton';
@@ -24,22 +25,77 @@ type Tab = 'members' | 'chat' | 'alerts';
  * Screen 7 — Convoy Dashboard (the core screen).
  * Live map with leader/member markers + route, speed + ETA, bottom sheet
  * with Members / Chat / Alerts, SOS and Push-to-Talk.
- * Live data is simulated (useRideTimer + socketService mock); see README.
+ * The map follows the rider's REAL GPS position (expo-location) — recenter
+ * and speed are live. Members, chat and alerts are still simulated
+ * (useRideTimer + socketService mock); see README.
  */
 export function ConvoyDashboardScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const dispatch = useAppDispatch();
   const { members, chat, alerts, speedKmh, rideSeconds, sosActive, voiceActive } = useAppSelector((s) => s.members);
+  const { locationSharing } = useAppSelector((s) => s.settings);
   const [tab, setTab] = useState<Tab>('members');
   const [sheetExpanded, setSheetExpanded] = useState(false);
   const [satellite, setSatellite] = useState(false);
   const [sosModal, setSosModal] = useState(false);
   const [draft, setDraft] = useState('');
+  const [following, setFollowing] = useState(true);
+  const mapRef = useRef<ConvoyMapHandle | null>(null);
 
   useRideTimer(true);
+  const {
+    coords: userCoords,
+    status: gpsStatus,
+    canAskAgain,
+    speedKmh: gpsSpeedKmh,
+    requestAgain,
+  } = useUserLocation(locationSharing);
 
   const remainingKm = Math.max(0, TRIP.distanceKm - Math.floor(rideSeconds / 60) * 1);
   const etaMin = speedKmh > 0 ? Math.round((remainingKm / speedKmh) * 60) : 0;
+
+  // Speed on the gauge: real GPS speed when the device reports one,
+  // otherwise the simulated convoy speed (labelled honestly below it).
+  const displaySpeed = gpsSpeedKmh ?? speedKmh;
+  const speedIsGps = gpsSpeedKmh != null;
+
+  /** Recenter on the rider's live position, north-up, and resume following. */
+  function handleRecenter() {
+    setFollowing(true);
+    mapRef.current?.recenterToUser();
+  }
+
+  /** Share the real local trip invite (name + code) with the system sheet. */
+  async function handleShare() {
+    const message = `Join my RideSync trip "${TRIP.name}" (${TRIP.origin} → ${TRIP.destination}) with code ${TRIP.code}.`;
+    try {
+      await Share.share({ message });
+    } catch {
+      Alert.alert('Share failed', 'The invite could not be shared. Try again.');
+    }
+  }
+
+  /** Denied banner action: ask again, or open device Settings when permanently denied. */
+  function handleOpenLocationSettings() {
+    if (canAskAgain) {
+      requestAgain();
+    } else {
+      void Linking.openSettings();
+    }
+  }
+
+  const gpsChipText =
+    gpsStatus === 'granted'
+      ? following
+        ? 'GPS on — following you'
+        : 'Map paused — tap ◎ to follow'
+      : gpsStatus === 'requesting'
+        ? 'Getting your location…'
+        : gpsStatus === 'off'
+          ? 'GPS off — turn on location'
+          : gpsStatus === 'denied'
+            ? 'Location permission denied'
+            : 'Location permission needed';
 
   function confirmSos() {
     setSosModal(false);
@@ -56,7 +112,14 @@ export function ConvoyDashboardScreen() {
   return (
     <View style={styles.root}>
       <View style={styles.mapArea}>
-        <ConvoyMap members={members} satellite={satellite} />
+        <ConvoyMap
+          ref={mapRef}
+          members={members}
+          satellite={satellite}
+          userLocation={userCoords ? { latitude: userCoords.latitude, longitude: userCoords.longitude } : null}
+          followUser={following}
+          onUserMoved={() => setFollowing(false)}
+        />
 
         <View style={styles.topRow}>
           <Pressable onPress={() => navigation.goBack()} style={styles.circleBtn}>
@@ -70,17 +133,36 @@ export function ConvoyDashboardScreen() {
           </Pressable>
         </View>
 
+        {gpsStatus === 'denied' ? (
+          <View style={styles.gpsBanner}>
+            <Text style={styles.gpsBannerText}>
+              Location permission denied — enable it in Settings to see yourself on the map.
+            </Text>
+            <Pressable onPress={handleOpenLocationSettings} style={styles.gpsBannerBtn}>
+              <Text style={styles.gpsBannerBtnText}>{canAskAgain ? 'Allow location' : 'Open Settings'}</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.gpsChip}>
+            <View style={[styles.gpsDot, gpsStatus === 'granted' && styles.gpsDotOn]} />
+            <Text style={styles.gpsChipText}>{gpsChipText}</Text>
+          </View>
+        )}
+
         <View style={styles.sideControls}>
           <MapControls
             satellite={satellite}
-            onRecenter={() => Alert.alert('Recentered', 'Map centered on your position (mock).')}
+            onRecenter={handleRecenter}
             onToggleSatellite={() => setSatellite((s) => !s)}
-            onShare={() => Alert.alert('Live location shared', 'Your live location link was shared with the convoy (mock).')}
+            onShare={handleShare}
           />
         </View>
 
         <View style={styles.gaugeWrap}>
-          <SpeedGauge speedKmh={speedKmh} />
+          <SpeedGauge speedKmh={displaySpeed} />
+          <Text style={[styles.speedSource, speedIsGps && styles.speedSourceGps]}>
+            {speedIsGps ? 'GPS speed' : 'Simulated speed'}
+          </Text>
           <Text style={styles.eta}>ETA {Math.floor(etaMin / 60)}h {etaMin % 60}m · {remainingKm} km left</Text>
         </View>
 
@@ -180,6 +262,16 @@ const styles = StyleSheet.create({
   circleText: { color: colors.text, fontSize: 18 },
   timer: { color: colors.text, fontSize: 13, fontWeight: '600' },
   sideControls: { position: 'absolute', right: 16, top: 74 },
+  gpsChip: { position: 'absolute', top: 66, left: 16, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: 'rgba(18,24,38,0.75)', borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 100, paddingHorizontal: 10, paddingVertical: 6 },
+  gpsDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.textFaint },
+  gpsDotOn: { backgroundColor: colors.cyan },
+  gpsChipText: { color: colors.text, fontSize: 11, fontWeight: '600' },
+  gpsBanner: { position: 'absolute', top: 66, left: 16, right: 16, backgroundColor: 'rgba(18,24,38,0.94)', borderWidth: 1, borderColor: colors.warning, borderRadius: 14, padding: 14 },
+  gpsBannerText: { color: colors.text, fontSize: 12, lineHeight: 17 },
+  gpsBannerBtn: { marginTop: 10, backgroundColor: colors.primary, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
+  gpsBannerBtnText: { color: colors.white, fontWeight: '700', fontSize: 13 },
+  speedSource: { color: colors.textDim, fontSize: 10, fontWeight: '600', textAlign: 'center' },
+  speedSourceGps: { color: colors.cyan },
   gaugeWrap: { position: 'absolute', left: 16, bottom: 230, gap: 6 },
   eta: { color: colors.textDim, fontSize: 11, backgroundColor: 'rgba(18,24,38,0.75)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, overflow: 'hidden' },
   fabRow: { position: 'absolute', left: 16, right: 16, bottom: 220, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

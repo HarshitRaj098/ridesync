@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { forwardRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors } from '../theme/colors';
 import { Member } from '../data/mockData';
+import type { ConvoyMapHandle, UserLocation } from './ConvoyMap.native';
 
 /**
  * Web-safe map fallback — `ConvoyMap.web.tsx`.
@@ -10,6 +11,11 @@ import { Member } from '../data/mockData';
  * placeholder with the route line and member dots positioned from the same
  * mock coordinates as the native map. Run `npx expo start` and open the
  * app on a device/emulator (Expo Go) for the real live map.
+ *
+ * GPS follow, recenter and live speed are device-only: on web this stays
+ * a preview of the mock convoy positions — it never claims to show your
+ * real location. The GPS props are accepted (same props as native) and
+ * ignored here.
  */
 
 const MARKER_COLORS: Record<Member['status'], string> = {
@@ -21,15 +27,22 @@ const MARKER_COLORS: Record<Member['status'], string> = {
 interface Props {
   members: Member[];
   satellite: boolean;
+  userLocation: UserLocation | null;
+  followUser: boolean;
+  onUserMoved: () => void;
 }
 
-export function ConvoyMap({ members }: Props) {
+export const ConvoyMap = forwardRef<ConvoyMapHandle, Props>(function ConvoyMap({ members }: Props, _ref) {
   return (
     <View style={styles.fallback}>
       <Text style={styles.title}>🗺 Map preview (web fallback)</Text>
       <Text style={styles.text}>
         Live maps need a device or emulator — open this app in Expo Go. Member positions below use the same mock
         coordinates as the native map.
+      </Text>
+      <Text style={styles.text}>
+        GPS follow, recenter and live speed are device-only and do not work on web — this is a preview, not your
+        real location.
       </Text>
       <View style={styles.routeLine} />
       {members.map((m) => (
@@ -44,7 +57,7 @@ export function ConvoyMap({ members }: Props) {
       <Text style={styles.hint}>Bhopal · 23.2599° N, 77.4126° E</Text>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   fallback: { ...StyleSheet.absoluteFillObject, backgroundColor: '#0A0F1A', padding: 20, justifyContent: 'center' },
